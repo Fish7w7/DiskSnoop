@@ -2,7 +2,8 @@ const api = window.diskScope;
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
-const APP_VERSION_LABEL = "0.1.0-beta.1";
+const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
+const APP_VERSION_LABEL = "0.2.0-beta.1";
 
 const state = {
   screen: "welcome",
@@ -12,9 +13,11 @@ const state = {
   settings: null,
   scanProgress: null,
   scanResult: null,
+  hiddenPaths: new Set(),
   selectedItem: null,
   selectedIds: new Set(),
   selectedQuarantineId: "",
+  quarantineFilter: "Ativos",
   quarantine: [],
   history: [],
   installedApps: [],
@@ -223,10 +226,14 @@ function cleanIpcError(error) {
 
 function friendlyMoveError(error, item) {
   const message = cleanIpcError(error);
-  if (message.includes("O Windows bloqueou o acesso")) {
+  if (message.includes("O Windows bloqueou o acesso")
+    || message.includes("EBUSY")
+    || message.includes("ENOTEMPTY")
+    || message.includes("directory not empty")
+    || message.includes("resource busy or locked")) {
     return {
-      title: "Item protegido pelo Windows",
-      message: `${item?.name || "Este item"} não pôde ser movido para a quarentena. Ele fica em uma área protegida ou está em uso. Abra no Explorer e revise manualmente.`,
+      title: "Item em uso ou protegido",
+      message: `${item?.name || "Este item"} não pôde ser movido agora. Algum app, driver ou serviço do Windows ainda está usando ou alterando essa pasta. Feche o aplicativo relacionado ou reinicie o PC antes de tentar de novo. O DiskSnoop não mantém cópias parciais quando a operação falha.`,
       confirmText: "Entendi",
       icon: "shield"
     };
@@ -261,11 +268,84 @@ function safetyBadge(value) {
   return badge("Médio", "medium");
 }
 
+function normalizeItemPath(value) {
+  return String(value || "").toLowerCase().replaceAll("/", "\\");
+}
+
+function isHiddenPath(item) {
+  const itemPath = normalizeItemPath(item?.path);
+  if (!itemPath) return false;
+  for (const hiddenPath of state.hiddenPaths) {
+    if (itemPath === hiddenPath || itemPath.startsWith(`${hiddenPath}\\`)) return true;
+  }
+  return false;
+}
+
+function hidePathFromViews(item) {
+  const itemPath = normalizeItemPath(item?.path);
+  if (!itemPath) return;
+  state.hiddenPaths.add(itemPath);
+  persistHiddenPaths();
+}
+
+function unhidePathFromViews(item) {
+  const itemPath = normalizeItemPath(item?.path);
+  if (!itemPath) return;
+  state.hiddenPaths.delete(itemPath);
+  persistHiddenPaths();
+}
+
+function loadHiddenPaths() {
+  try {
+    const paths = JSON.parse(localStorage.getItem(HIDDEN_PATHS_KEY) || "[]");
+    state.hiddenPaths = new Set(Array.isArray(paths) ? paths.map(normalizeItemPath).filter(Boolean) : []);
+  } catch {
+    state.hiddenPaths = new Set();
+  }
+}
+
+function persistHiddenPaths() {
+  try {
+    localStorage.setItem(HIDDEN_PATHS_KEY, JSON.stringify([...state.hiddenPaths]));
+  } catch {}
+}
+
+function clearHiddenPaths() {
+  state.hiddenPaths.clear();
+  persistHiddenPaths();
+}
+
+function syncHiddenPathsFromQuarantine(records = state.quarantine) {
+  let changed = false;
+  const blockedOriginals = new Set();
+  const restoredOriginals = new Set();
+  for (const record of records || []) {
+    const originalPath = normalizeItemPath(record.originalPath);
+    if (!originalPath) continue;
+    if (record.status === "Restaurado") restoredOriginals.add(originalPath);
+    else blockedOriginals.add(originalPath);
+  }
+  for (const restoredPath of restoredOriginals) {
+    if (!blockedOriginals.has(restoredPath) && state.hiddenPaths.delete(restoredPath)) changed = true;
+  }
+  for (const blockedPath of blockedOriginals) {
+    if (!state.hiddenPaths.has(blockedPath)) {
+      state.hiddenPaths.add(blockedPath);
+      changed = true;
+    }
+  }
+  if (changed) persistHiddenPaths();
+}
+
+function selectedCandidateItems() {
+  return visibleCandidates().filter((item) => state.selectedIds.has(item.id) && canMoveToQuarantine(item));
+}
+
 function shellTopRight() {
   if (state.screen === "welcome" || state.screen === "disks") return "";
   if (state.screen === "scanning") return `<button class="primary" data-action="cancel-scan">Cancelar</button>`;
-  if (state.tab === "candidates") return `<button class="primary" data-action="quarantine-selected" ${state.selectedIds.size ? "" : "disabled"}>Mover selecionados</button>`;
-  if (state.tab === "quarantine") return `<div class="top-stat">Espaço recuperado: <strong>${compactBytes(totalQuarantined())}</strong></div>`;
+  if (state.tab === "candidates") return `<button class="primary" data-action="quarantine-selected" ${selectedCandidateItems().length ? "" : "disabled"}>Mover selecionados</button>`;
+  if (state.tab === "quarantine") return `<div class="top-stat">Protegido em quarentena: <strong>${compactBytes(totalQuarantined())}</strong></div>`;
   if (state.tab === "settings") return "";
   return `
     <div class="select-shell">
@@ -319,7 +399,7 @@ function sidebar() {
       <section class="sidebar-info">
         <div class="sidebar-info-copy">
           <strong>DiskSnoop</strong>
-          <span>Versão v0.1.0</span>
+          <span>Versão v${APP_VERSION_LABEL}</span>
           <p>Feito para ajudar você a recuperar espaço.</p>
         </div>
         <span class="sidebar-info-icon" aria-hidden="true">${icon("database")}</span>
@@ -498,15 +578,15 @@ function modalOverlay() {
           <div>
             <h2>${escapeHtml(modal.title)}</h2>
             <p>${escapeHtml(modal.message)}</p>
+            ${modal.requireText ? `
+              <label class="modal-input">
+                <span>Digite ${escapeHtml(modal.requireText)} para confirmar</span>
+                <input data-modal-input value="${escapeHtml(modal.value || "")}" autocomplete="off">
+              </label>
+            ` : ""}
+            ${modal.error ? `<p class="modal-error">${escapeHtml(modal.error)}</p>` : ""}
           </div>
         </header>
-        ${modal.requireText ? `
-          <label class="modal-input">
-            <span>Digite ${escapeHtml(modal.requireText)} para confirmar</span>
-            <input data-modal-input value="${escapeHtml(modal.value || "")}" autocomplete="off">
-          </label>
-        ` : ""}
-        ${modal.error ? `<p class="modal-error">${escapeHtml(modal.error)}</p>` : ""}
         <footer>
           <button class="secondary" data-action="modal-cancel">${escapeHtml(modal.cancelText || "Cancelar")}</button>
           <button class="${modal.variant === "danger" ? "outline-danger" : "primary"}" data-action="modal-confirm">${escapeHtml(modal.confirmText || "Confirmar")}</button>
@@ -565,14 +645,22 @@ function renderTab() {
 
 function groupedCandidates() {
   const groups = new Map();
-  for (const item of state.scanResult?.candidates || []) {
+  for (const item of visibleCandidates()) {
     groups.set(item.type, (groups.get(item.type) || 0) + item.size);
   }
   return [...groups.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+function visibleCandidates() {
+  return (state.scanResult?.candidates || []).filter((item) => !isHiddenPath(item));
+}
+
+function visibleLargeFolders() {
+  return (state.scanResult?.largeFolders || []).filter((item) => !isHiddenPath(item));
+}
+
 function totalReviewable() {
-  return (state.scanResult?.candidates || []).reduce((sum, item) => sum + item.size, 0);
+  return visibleCandidates().reduce((sum, item) => sum + item.size, 0);
 }
 
 function currentHistoryEntry() {
@@ -580,11 +668,11 @@ function currentHistoryEntry() {
 }
 
 function duplicateReviewableTotal() {
-  return (state.scanResult?.duplicateGroups || []).reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
+  return duplicateGroups().reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
 }
 
 function possibleLeftoversCount() {
-  return (state.scanResult?.largeFolders || []).filter((item) => {
+  return visibleLargeFolders().filter((item) => {
     const lower = item.path.toLowerCase();
     return lower.includes("\\appdata\\local\\") || lower.includes("\\appdata\\roaming\\") || lower.includes("\\programdata\\");
   }).length;
@@ -619,7 +707,7 @@ function overviewTab() {
         </article>
         <article class="metric-card">
           <span class="metric-icon">${icon("file")}</span>
-          <div><strong>${result.candidates.length}</strong><span>Encontrados</span></div>
+          <div><strong>${visibleCandidates().length}</strong><span>Encontrados</span></div>
         </article>
         <article class="metric-card">
           <span class="metric-icon">${icon("cube")}</span>
@@ -656,7 +744,7 @@ function overviewTab() {
 
       <h2>Achados importantes</h2>
       <section class="panel finding-list">
-        ${(state.scanResult?.candidates || []).slice(0, 4).map((item) => `
+        ${visibleCandidates().slice(0, 4).map((item) => `
           <button class="finding-row" data-action="select-overview-candidate" data-id="${escapeHtml(item.id)}">
             <span class="mini-icon">${icon(iconForCandidate(item))}</span>
             <span>${escapeHtml(summaryName(item))}</span>
@@ -699,7 +787,7 @@ function iconForCandidate(item) {
 
 function filteredFolders() {
   const query = state.search.toLowerCase();
-  return [...(state.scanResult?.largeFolders || [])]
+  return [...visibleLargeFolders()]
     .filter((item) => !query || item.path.toLowerCase().includes(query) || item.name.toLowerCase().includes(query))
     .filter((item) => item.size >= state.sizeFilter * GB)
     .sort((a, b) => {
@@ -724,8 +812,8 @@ function folderRisk(item) {
 
 function foldersTab() {
   const items = filteredFolders();
-  const selected = state.selectedItem || items[0];
-  if (!state.selectedItem && selected) state.selectedItem = selected;
+  const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
+  if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   return `
     <section>
       <div class="page-heading">
@@ -797,7 +885,7 @@ function childrenSummary(item) {
 
 function filteredLargeFiles() {
   const query = state.fileSearch.toLowerCase().trim();
-  return [...(state.scanResult?.candidates || [])]
+  return [...visibleCandidates()]
     .filter((item) => item.type === "Arquivos grandes")
     .filter((item) => !query || `${item.name} ${item.path}`.toLowerCase().includes(query))
     .filter((item) => item.size >= state.fileSizeFilter)
@@ -872,6 +960,7 @@ function largeFilesTab() {
 
 function fileDetails(item) {
   if (!item) return `<section class="panel explanation"><p class="muted">Selecione um arquivo para ver detalhes.</p></section>`;
+  const canQuarantine = canMoveToQuarantine(item);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -889,15 +978,16 @@ function fileDetails(item) {
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir local</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
-        <button class="secondary" data-action="quarantine-selected-item">${icon("shield")}Mover para quarentena</button>
+        <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
 }
 
 function filteredCandidates() {
   const query = state.candidateSearch.toLowerCase().trim();
-  return [...(state.scanResult?.candidates || [])]
+  return [...visibleCandidates()]
     .filter((item) => {
       if (query && !`${item.name} ${item.path} ${item.type}`.toLowerCase().includes(query)) return false;
       if (!query && Number(state.candidateMinSize || 0) > 0 && item.size < Number(state.candidateMinSize)) return false;
@@ -956,9 +1046,10 @@ function candidatesTab() {
   const totalCandidates = state.scanResult?.candidates?.length || 0;
   const safe = items.filter((item) => item.security === "Seguro revisar").length;
   const review = items.filter((item) => item.security === "Verificar antes").length;
-  const selectedItems = (state.scanResult?.candidates || []).filter((item) => state.selectedIds.has(item.id));
+  const selectedItems = selectedCandidateItems();
   const selectedSize = selectedItems.reduce((sum, item) => sum + item.size, 0);
   const visibleItems = items.slice(0, state.candidateLimit);
+  const selectableVisibleItems = visibleItems.filter(canMoveToQuarantine);
   return `
     <section>
       <div class="page-heading">
@@ -974,16 +1065,18 @@ function candidatesTab() {
       </div>
       <div class="selection-summary">
         <span>Mostrando ${visibleItems.length} de ${items.length}</span>
-        <span>${state.selectedIds.size} selecionado(s)</span>
+        <span>${selectedItems.length} selecionado(s)</span>
         <strong>${compactBytes(selectedSize)}</strong>
       </div>
       <section class="panel table-panel candidates-panel">
         <table class="candidates-table">
-          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${visibleItems.length && visibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Selo</th></tr></thead>
+          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Selo</th></tr></thead>
           <tbody>
-            ${visibleItems.map((item) => `
+            ${visibleItems.map((item) => {
+              const canSelect = canMoveToQuarantine(item);
+              return `
               <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-candidate" data-id="${escapeHtml(item.id)}">
-                <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) ? "checked" : ""}></td>
+                <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) && canSelect ? "checked" : ""} ${canSelect ? "" : "disabled"}></td>
                 <td class="candidate-item-cell">
                   <div class="candidate-main">
                     <span class="candidate-icon">${icon(item.type === "Instaladores antigos" ? "download" : item.type === "Arquivos grandes" ? "file" : "folder")}</span>
@@ -997,7 +1090,7 @@ function candidatesTab() {
                 <td>${compactBytes(item.size)}</td>
                 <td>${safetyBadge(item.security)}</td>
               </tr>
-            `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
+            `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -1018,6 +1111,7 @@ function selectControl(field, options, current) {
 
 function candidateDetails(item) {
   if (!item) return `<section class="panel explanation"><p class="muted">Selecione um candidato para ver a explicação.</p></section>`;
+  const canQuarantine = canMoveToQuarantine(item);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1038,15 +1132,60 @@ function candidateDetails(item) {
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir</button>
         <button class="secondary" data-action="show-selected">${icon("list")}Ver conteúdo</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
-        <button class="secondary" data-action="quarantine-selected-item">${icon("shield")}Mover para quarentena</button>
+        <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
+}
+
+function isProtectedUiPath(itemPath) {
+  const lower = String(itemPath || "").toLowerCase().replaceAll("/", "\\");
+  return lower.includes("\\windows\\")
+    || lower.endsWith("\\windows")
+    || lower.includes("\\system volume information\\")
+    || lower.includes("\\program files\\")
+    || lower.includes("\\program files (x86)\\")
+    || lower.includes("\\programdata\\package cache\\")
+    || lower.includes("\\programdata\\microsoft\\windows\\")
+    || lower.includes("\\drivers\\");
+}
+
+function canMoveToQuarantine(item) {
+  if (!item?.path) return false;
+  if (item.security === "Sensivel" || item.security === "Sensível") return false;
+  if (isProtectedUiPath(item.path)) return false;
+  const lower = item.path.toLowerCase();
+  const looksLikeAppLeftover = lower.includes("\\appdata\\")
+    || lower.includes("\\programdata\\")
+    || lower.includes("\\program files\\");
+  if (looksLikeAppLeftover && item.type === "Pasta") {
+    const [status] = leftoverStatus(item);
+    if (status === "App instalado" || status === "Verificar manualmente") return false;
+  }
+  return true;
+}
+
+function blockedQuarantineReason(item) {
+  if (item?.security === "Sensivel" || item?.security === "Sensível" || isProtectedUiPath(item?.path)) {
+    return "Este item fica em área sensível ou protegida do Windows. O DiskSnoop mostra o espaço, mas não coloca isso como ação normal de quarentena.";
+  }
+  return "Este item precisa de revisão manual antes de qualquer ação. Abra a pasta e confirme se ela não pertence a um app instalado.";
 }
 
 function duplicateGroups() {
   const query = state.duplicateSearch.toLowerCase().trim();
   return [...(state.scanResult?.duplicateGroups || [])]
+    .map((group) => {
+      const items = (group.items || []).filter((item) => !isHiddenPath(item));
+      return {
+        ...group,
+        items,
+        copies: items.length,
+        reviewableBytes: (group.size || 0) * Math.max(0, items.length - 1)
+      };
+    })
+    .filter((group) => (group.items || []).length > 1)
     .filter((group) => !query || `${group.name} ${group.items?.map((item) => item.path).join(" ")}`.toLowerCase().includes(query))
     .filter((group) => (group.reviewableBytes || 0) >= Number(state.duplicateMinWaste || 0))
     .sort((a, b) => (b.reviewableBytes || 0) - (a.reviewableBytes || 0));
@@ -1139,8 +1278,17 @@ function totalQuarantined() {
   return (state.quarantine || []).filter((item) => item.status === "Em quarentena").reduce((sum, item) => sum + item.size, 0);
 }
 
+function isQuarantineFinalized(item) {
+  return ["Excluido permanentemente", "Excluído permanentemente", "Restaurado"].includes(item?.status);
+}
+
+function isQuarantineProblem(item) {
+  return item?.status === "Arquivo ausente";
+}
+
 function selectedQuarantine() {
-  return state.quarantine.find((item) => item.id === state.selectedQuarantineId) || state.quarantine[0];
+  const items = filteredQuarantine();
+  return items.find((item) => item.id === state.selectedQuarantineId) || items[0] || null;
 }
 
 function quarantineStatusBadge(status = "Em quarentena") {
@@ -1149,8 +1297,34 @@ function quarantineStatusBadge(status = "Em quarentena") {
   return badge(status, "medium");
 }
 
+function quarantineItemIcon(item) {
+  const type = String(item?.type || "").toLowerCase();
+  if (type.includes("arquivo") || type.includes("instalador") || type.includes("download")) return "file";
+  return "folder";
+}
+
+function filteredQuarantine() {
+  const items = state.quarantine || [];
+  if (state.quarantineFilter === "Ativos") return items.filter((item) => item.status === "Em quarentena");
+  if (state.quarantineFilter === "Problemas") return items.filter(isQuarantineProblem);
+  if (state.quarantineFilter === "Finalizados") return items.filter(isQuarantineFinalized);
+  return items;
+}
+
+function quarantineSummary() {
+  const items = state.quarantine || [];
+  const finalized = items.filter(isQuarantineFinalized).length;
+  const missing = items.filter(isQuarantineProblem).length;
+  return {
+    active: items.filter((item) => item.status === "Em quarentena").length,
+    missing,
+    finalized,
+    archived: missing + finalized
+  };
+}
+
 function possibleLeftovers() {
-  return (state.scanResult?.largeFolders || [])
+  return visibleLargeFolders()
     .filter((item) => {
       const lower = item.path.toLowerCase();
       if (isNoisyLeftoverPath(lower)) return false;
@@ -1284,6 +1458,7 @@ function leftoverDetails(item) {
   if (!item) return `<section class="panel explanation"><p class="muted">Selecione uma pasta para revisar.</p></section>`;
   const match = matchingInstalledApp(item);
   const [status, kind] = leftoverStatus(item);
+  const canQuarantine = canMoveToQuarantine(item);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1304,36 +1479,60 @@ function leftoverDetails(item) {
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
         <button class="secondary" data-action="show-selected">${icon("list")}Ver conteúdo</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
-        <button class="secondary" data-action="quarantine-leftover">${icon("shield")}Mover para quarentena</button>
+        <button class="secondary" data-action="quarantine-leftover" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
 }
 
 function quarantineTab() {
+  const summary = quarantineSummary();
+  const visibleItems = filteredQuarantine();
   const selected = selectedQuarantine();
-  if (!state.selectedQuarantineId && selected) state.selectedQuarantineId = selected.id;
-  const activeItems = state.quarantine.filter((item) => item.status === "Em quarentena");
+  if (selected && state.selectedQuarantineId !== selected.id) state.selectedQuarantineId = selected.id;
+  const canRestoreSelected = selected?.status === "Em quarentena" && Boolean(selected.originalPath);
+  const canDeleteSelected = selected?.status === "Em quarentena";
+  const emptyMessage = state.quarantineFilter === "Ativos"
+    ? "Nenhum item ativo na quarentena. Registros antigos ficam em Problemas ou Finalizados."
+    : "Nenhum item neste filtro.";
   return `
     <section>
       <div class="page-heading">
         <h1>Quarentena</h1>
-        <p>${activeItems.length} itens ativos. Itens movidos daqui ainda podem ser restaurados.</p>
+        <p>${summary.active} itens ativos. A lista principal mostra apenas o que ainda pode ser restaurado ou excluído.</p>
+      </div>
+      <div class="safety-note">${icon("shield")}Registros finalizados e arquivos ausentes ficam separados para não bagunçar sua revisão. Limpar registros encerrados remove apenas o histórico local da quarentena.</div>
+      <div class="quarantine-toolbar">
+        <div class="quarantine-tabs">
+          ${["Ativos", "Problemas", "Finalizados", "Todos"].map((filter) => `
+            <button class="${state.quarantineFilter === filter ? "active" : ""}" data-action="quarantine-filter" data-filter="${filter}">
+              ${escapeHtml(filter)}
+            </button>
+          `).join("")}
+        </div>
+        <button class="secondary" data-action="cleanup-quarantine-records" ${summary.archived ? "" : "disabled"}>${icon("trash")}Limpar registros encerrados</button>
+      </div>
+      <div class="quarantine-summary">
+        <span><strong>${summary.active}</strong> ativos</span>
+        <span><strong>${summary.missing}</strong> ausentes</span>
+        <span><strong>${summary.finalized}</strong> finalizados</span>
+        <span><strong>${compactBytes(totalQuarantined())}</strong> protegidos</span>
       </div>
       <section class="panel table-panel">
         <table>
           <thead><tr><th class="check-col"></th><th>Item</th><th>Origem</th><th>Tamanho</th><th>Data</th><th>Status</th></tr></thead>
           <tbody>
-            ${state.quarantine.map((item) => `
+            ${visibleItems.map((item) => `
               <tr class="${selected?.id === item.id ? "selected" : ""}" data-action="select-quarantine" data-id="${escapeHtml(item.id)}">
-                <td><input type="checkbox" ${selected?.id === item.id ? "checked" : ""}></td>
-                <td class="name-cell"><span class="folder-icon">${icon(item.type === "Arquivos grandes" ? "file" : "folder")}</span><span>${escapeHtml(item.name)}</span></td>
+                <td><span class="row-selector ${selected?.id === item.id ? "active" : ""}"></span></td>
+                <td class="name-cell"><span class="folder-icon">${icon(quarantineItemIcon(item))}</span><span>${escapeHtml(item.name)}</span></td>
                 <td>${escapeHtml(shortOrigin(item.originalPath))}</td>
                 <td>${compactBytes(item.size)}</td>
                 <td>${relativeDate(item.movedAt)}</td>
                 <td>${quarantineStatusBadge(item.status)}</td>
               </tr>
-            `).join("") || `<tr><td colspan="6" class="empty-soft">Nada em quarentena.</td></tr>`}
+            `).join("") || `<tr><td colspan="6" class="empty-soft">${emptyMessage}</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -1341,13 +1540,14 @@ function quarantineTab() {
       <section class="panel action-panel">
         ${selected ? `
           <p>Item selecionado: <strong>${escapeHtml(selected.name)}</strong></p>
-          <p>Origem: ${escapeHtml(selected.originalPath)}</p>
+          <p>Origem: ${escapeHtml(selected.originalPath || "Origem não registrada")}</p>
           <p>Quarentena: ${escapeHtml(selected.quarantinePath || "-")}</p>
           <p>Status: ${escapeHtml(selected.status || "Em quarentena")}</p>
+          ${selected.recovered ? `<p class="muted">Este item foi encontrado na pasta de quarentena, mas o registro original não estava no histórico do DiskSnoop. Você pode abrir ou excluir permanentemente, mas a restauração automática fica indisponível sem o caminho original.</p>` : ""}
           <div class="detail-actions">
             <button class="secondary" data-action="open-quarantine-item" data-path="${escapeHtml(selected.quarantinePath || "")}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("folder")}Abrir na quarentena</button>
-            <button class="outline-primary" data-action="restore-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("reset")}Restaurar</button>
-            <button class="outline-danger" data-action="delete-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("trash")}Excluir permanentemente</button>
+            <button class="outline-primary" data-action="restore-quarantine" data-id="${escapeHtml(selected.id)}" ${canRestoreSelected ? "" : "disabled"}>${icon("reset")}Restaurar</button>
+            <button class="outline-danger" data-action="delete-quarantine" data-id="${escapeHtml(selected.id)}" ${canDeleteSelected ? "" : "disabled"}>${icon("trash")}Excluir permanentemente</button>
             <button class="secondary" data-action="forget-missing-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status === "Arquivo ausente" ? "" : "disabled"}>${icon("ban")}Remover registro ausente</button>
           </div>
         ` : `<p class="muted">Selecione um item em quarentena.</p>`}
@@ -1624,11 +1824,12 @@ function render() {
   lastRenderedTab = state.screen === "app" ? state.tab : null;
 }
 
-const MIN_BOOT_MS = 7000;
+const MIN_BOOT_MS = 900;
 
 async function loadBasics() {
   const bootStart = Date.now();
   try {
+    loadHiddenPaths();
     const loadedSettings = normalizeTheme(await api.getSettings());
     state.settings = loadedSettings;
     api.saveSettings(loadedSettings).catch(() => {});
@@ -1646,6 +1847,7 @@ async function loadBasics() {
 
     state.drives = drives;
     state.quarantine = quarantine;
+    syncHiddenPathsFromQuarantine(quarantine);
     state.history = history;
     state.selectedDrive = mostUrgentDrive();
     restoreLastScan();
@@ -1667,7 +1869,7 @@ async function loadBasics() {
           ${appLogo("big")}
           <h1>Não foi possível iniciar</h1>
           <p>${escapeHtml(error.message || "Erro ao carregar dados iniciais.")}</p>
-          <button class="primary" onclick="location.reload()">Tentar novamente</button>
+          <button class="primary" data-action="retry-load">Tentar novamente</button>
         </section>
       </main>
     `;
@@ -1682,6 +1884,9 @@ function restoreLastScan() {
     state.selectedDrive = state.drives.find((drive) => drive.letter === cached.drive.letter) || cached.drive;
     state.screen = "app";
     state.tab = "overview";
+    state.selectedItem = null;
+    state.selectedIds.clear();
+    syncHiddenPathsFromQuarantine();
   } catch {
     localStorage.removeItem(LAST_SCAN_KEY);
   }
@@ -1749,19 +1954,25 @@ function createTestScan() {
 }
 
 function findFolder(id) {
-  return (state.scanResult?.largeFolders || []).find((item) => item.id === id);
+  return visibleLargeFolders().find((item) => item.id === id);
 }
 
 function findCandidate(id) {
-  return (state.scanResult?.candidates || []).find((item) => item.id === id);
+  return visibleCandidates().find((item) => item.id === id);
 }
 
 function findDuplicateGroup(id) {
-  return (state.scanResult?.duplicateGroups || []).find((group) => group.id === id);
+  return duplicateGroups().find((group) => group.id === id);
 }
 
 async function startScan(letter) {
   const drive = state.drives.find((item) => item.letter === letter) || state.selectedDrive;
+  if (!drive?.letter) {
+    setToast("Selecione um disco antes de iniciar o scan.");
+    state.screen = "disks";
+    render();
+    return;
+  }
   state.selectedDrive = drive;
   state.scanProgress = { progress: 0, currentPath: drive?.letter || "", files: 0, skipped: 0, mappedBytes: 0, candidates: 0 };
   state.paused = false;
@@ -1776,33 +1987,102 @@ async function startScan(letter) {
 
   state.screen = "scanning";
   render();
-  await api.startScan({ drive });
+  try {
+    await api.startScan({ drive });
+  } catch (error) {
+    state.screen = "disks";
+    render();
+    setToast(`Não foi possível iniciar o scan: ${cleanIpcError(error)}`);
+  }
 }
 
 async function refreshData() {
   state.quarantine = await api.listQuarantine();
+  syncHiddenPathsFromQuarantine(state.quarantine);
   state.history = await api.listHistory();
+}
+
+async function openPathWithFeedback(targetPath) {
+  if (!targetPath) {
+    setToast("Caminho ausente.");
+    return false;
+  }
+  const result = await api.openPath(targetPath);
+  if (result?.ok === false) {
+    setToast(`Não foi possível abrir: ${cleanIpcError(result.error)}`);
+    return false;
+  }
+  return true;
+}
+
+async function showPathWithFeedback(targetPath) {
+  if (!targetPath) {
+    setToast("Caminho ausente.");
+    return false;
+  }
+  const result = await api.showInFolder(targetPath);
+  if (result?.ok === false) {
+    setToast(`Não foi possível abrir no Explorer: ${cleanIpcError(result.error)}`);
+    return false;
+  }
+  return true;
 }
 
 async function ignoreItem(item) {
   if (!item) return;
-  await api.addIgnoredPath(item.path);
-  state.settings = await api.getSettings();
-  removeItemFromCurrentResult(item);
-  setToast("Item ignorado nos próximos scans.");
+  try {
+    await api.addIgnoredPath(item.path);
+    state.settings = await api.getSettings();
+    removeItemFromCurrentResult(item);
+    setToast("Item ignorado nos próximos scans.");
+  } catch (error) {
+    setToast(`Não foi possível ignorar: ${cleanIpcError(error)}`);
+  }
 }
 
 function removeItemFromCurrentResult(item) {
   if (!state.scanResult || !item?.path) return;
+  hidePathFromViews(item);
+  if (item.id) state.selectedIds.delete(item.id);
   state.scanResult.candidates = (state.scanResult.candidates || []).filter((candidate) => candidate.path !== item.path);
   state.scanResult.largeFolders = (state.scanResult.largeFolders || []).filter((folder) => folder.path !== item.path);
+  state.scanResult.duplicateGroups = (state.scanResult.duplicateGroups || [])
+    .map((group) => {
+      const items = (group.items || []).filter((duplicate) => !isHiddenPath(duplicate));
+      return {
+        ...group,
+        items,
+        copies: items.length,
+        reviewableBytes: (group.size || 0) * Math.max(0, items.length - 1)
+      };
+    })
+    .filter((group) => (group.items || []).length > 1);
   if (state.selectedItem?.path === item.path) state.selectedItem = null;
   localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
 }
 
 async function quarantineItems(items) {
-  const valid = items.filter(Boolean);
-  if (!valid.length) return;
+  const blocked = items.filter((item) => item && !canMoveToQuarantine(item));
+  const valid = items.filter((item) => item && canMoveToQuarantine(item));
+  if (!valid.length) {
+    if (blocked.length) {
+      await confirmModal({
+        title: "Revisão manual necessária",
+        message: "Este item parece protegido, sensível ou ligado a um app instalado. O DiskSnoop pode abrir o local para você revisar, mas não vai mover isso para quarentena como candidato normal.",
+        confirmText: "Entendi",
+        icon: "shield"
+      });
+    }
+    return;
+  }
+  if (blocked.length) {
+    await confirmModal({
+      title: "Alguns itens exigem revisão manual",
+      message: `${blocked.length} item(ns) ficaram de fora porque parecem protegidos, sensíveis ou ligados a apps instalados. O DiskSnoop não move esse tipo de item para quarentena automaticamente.`,
+      confirmText: "Entendi",
+      icon: "shield"
+    });
+  }
   const ok = await confirmModal({
     title: "Mover para quarentena",
     message: `Mover ${valid.length} item(ns) para a quarentena? Nada será excluído permanentemente.`,
@@ -1810,13 +2090,17 @@ async function quarantineItems(items) {
     icon: "shield"
   });
   if (!ok) return;
+  let movedCount = 0;
   for (const item of valid) {
     try {
       await api.moveToQuarantine(item);
+      movedCount += 1;
       state.selectedIds.delete(item.id);
       removeItemFromCurrentResult(item);
     } catch (error) {
+      await refreshData().catch(() => {});
       await confirmModal(friendlyMoveError(error, item));
+      if (movedCount) setToast(`${movedCount} item(ns) movido(s). O restante ficou para revisão manual.`);
       return;
     }
   }
@@ -1933,6 +2217,10 @@ document.addEventListener("click", async (event) => {
     state.screen = "disks";
     render();
   }
+  if (action === "retry-load") {
+    location.reload();
+    return;
+  }
   if (action === "window-minimize") await api.minimizeWindow();
   if (action === "window-maximize") await api.maximizeWindow();
   if (action === "window-close") await api.closeWindow();
@@ -1947,6 +2235,7 @@ document.addEventListener("click", async (event) => {
     state.screen = "app";
     state.tab = "overview";
     state.selectedItem = null;
+    clearHiddenPaths();
     state.selectedIds.clear();
     localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
     setToast("Bypass de teste carregado.");
@@ -1956,6 +2245,7 @@ document.addEventListener("click", async (event) => {
       state.screen = "disks";
       state.scanResult = null;
       state.selectedItem = null;
+      clearHiddenPaths();
       state.selectedIds.clear();
       render();
     } else {
@@ -1980,6 +2270,9 @@ document.addEventListener("click", async (event) => {
   if (action === "tab") {
     state.tab = target.dataset.tab;
     state.selectedItem = null;
+    if (state.tab === "quarantine") {
+      await refreshData();
+    }
     render();
   }
   if (action === "select-overview-candidate") {
@@ -2009,11 +2302,17 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "toggle-select") {
     event.stopPropagation();
+    const item = findCandidate(id);
+    if (!canMoveToQuarantine(item)) {
+      state.selectedIds.delete(id);
+      render();
+      return;
+    }
     state.selectedIds[target.checked ? "add" : "delete"](id);
     render();
   }
   if (action === "toggle-all-candidates") {
-    const items = filteredCandidates().slice(0, state.candidateLimit);
+    const items = filteredCandidates().slice(0, state.candidateLimit).filter(canMoveToQuarantine);
     if (target.checked) items.forEach((item) => state.selectedIds.add(item.id));
     else items.forEach((item) => state.selectedIds.delete(item.id));
     render();
@@ -2026,8 +2325,8 @@ document.addEventListener("click", async (event) => {
     state.leftoversLimit += 80;
     render();
   }
-  if (action === "open-selected" && state.selectedItem) await api.showInFolder(state.selectedItem.path);
-  if (action === "open-path") await api.showInFolder(target.dataset.path);
+  if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path);
+  if (action === "open-path") await showPathWithFeedback(target.dataset.path);
   if (action === "show-selected" && state.selectedItem) {
     try {
       const items = await api.listContents(state.selectedItem.path);
@@ -2045,20 +2344,45 @@ document.addEventListener("click", async (event) => {
   if (action === "quarantine-selected-item" && state.selectedItem) await quarantineItems([state.selectedItem]);
   if (action === "quarantine-leftover" && state.selectedItem) await quarantineItems([state.selectedItem]);
   if (action === "quarantine-selected") {
-    const items = (state.scanResult?.candidates || []).filter((item) => state.selectedIds.has(item.id));
-    await quarantineItems(items);
+    await quarantineItems(selectedCandidateItems());
   }
   if (action === "select-quarantine") {
     state.selectedQuarantineId = id;
     render();
   }
+  if (action === "quarantine-filter") {
+    state.quarantineFilter = target.dataset.filter || "Ativos";
+    state.selectedQuarantineId = "";
+    render();
+  }
+  if (action === "cleanup-quarantine-records") {
+    const ok = await confirmModal({
+      title: "Limpar registros encerrados",
+      message: "Registros já excluídos, restaurados ou ausentes sairão da lista. Isso não apaga nenhum item que ainda esteja em quarentena.",
+      confirmText: "Limpar registros",
+      icon: "trash"
+    });
+    if (!ok) return;
+    try {
+      const result = await api.cleanupQuarantineRecords();
+      state.selectedQuarantineId = "";
+      state.quarantineFilter = "Ativos";
+      await refreshData();
+      render();
+      setToast(`${result.removed || 0} registro(s) removido(s).`);
+    } catch (error) {
+      setToast(cleanIpcError(error));
+    }
+  }
   if (action === "open-quarantine-item") {
     const targetPath = target.dataset.path;
-    if (targetPath) await api.showInFolder(targetPath);
+    await showPathWithFeedback(targetPath);
   }
   if (action === "restore-quarantine") {
+    const record = state.quarantine.find((entry) => entry.id === id);
     try {
       await api.restoreQuarantine(id);
+      if (record?.originalPath) unhidePathFromViews({ path: record.originalPath });
       await refreshData();
       setToast("Item restaurado.");
     } catch (error) {
@@ -2066,6 +2390,7 @@ document.addEventListener("click", async (event) => {
     }
   }
   if (action === "delete-quarantine") {
+    const record = state.quarantine.find((entry) => entry.id === id);
     const ok = await confirmModal({
       title: "Excluir permanentemente",
       message: "Esta ação não pode ser desfeita pelo DiskSnoop.",
@@ -2077,6 +2402,7 @@ document.addEventListener("click", async (event) => {
     if (!ok) return;
     try {
       await api.deletePermanent(id);
+      if (record?.originalPath) hidePathFromViews({ path: record.originalPath });
       await refreshData();
       setToast("Item excluído permanentemente.");
     } catch (error) {
@@ -2137,11 +2463,11 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "open-config-path") {
-    await api.openPath(target.dataset.path);
+    await openPathWithFeedback(target.dataset.path);
   }
   if (action === "open-quarantine") {
     const paths = await api.appPaths();
-    await api.openPath(state.settings.quarantinePath || paths.defaultQuarantine);
+    await openPathWithFeedback(state.settings.quarantinePath || paths.defaultQuarantine);
   }
   if (action === "reset-quarantine-path") {
     state.settings.quarantinePath = "";
@@ -2166,7 +2492,7 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "open-data-folder") {
     const paths = await api.appPaths();
-    await api.openPath(paths.userData);
+    await openPathWithFeedback(paths.userData);
   }
   if (action === "clear-local-scan") {
     localStorage.removeItem(LAST_SCAN_KEY);
@@ -2211,6 +2537,7 @@ document.addEventListener("click", async (event) => {
     state.tab = "overview";
     state.selectedItem = null;
     state.selectedIds.clear();
+    syncHiddenPathsFromQuarantine();
     localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
     setToast("Scan histórico carregado.");
   }
@@ -2264,6 +2591,7 @@ api.onScanDone(async (result) => {
   state.screen = "app";
   state.tab = "overview";
   state.selectedItem = null;
+  clearHiddenPaths();
   state.selectedIds.clear();
   localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(result));
   await refreshData();

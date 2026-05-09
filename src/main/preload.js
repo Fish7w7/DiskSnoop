@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("diskScope", {
   restoreQuarantine: (id) => unwrapInvoke("quarantine:restore", id),
   deletePermanent: (id) => unwrapInvoke("quarantine:deletePermanent", id),
   forgetMissingQuarantine: (id) => unwrapInvoke("quarantine:forgetMissing", id),
+  cleanupQuarantineRecords: () => unwrapInvoke("quarantine:cleanupRecords"),
   listHistory: () => ipcRenderer.invoke("history:list"),
   clearHistory: () => ipcRenderer.invoke("history:clear"),
   loadScanSnapshot: (id) => ipcRenderer.invoke("scan:snapshot", id),

@@ -4,6 +4,8 @@ DiskSnoop e um app desktop para Windows que ajuda a descobrir onde o espaco do S
 
 > Beta: o DiskSnoop ainda esta em fase de testes. Revise os itens antes de mover para quarentena ou excluir permanentemente.
 
+Versao em desenvolvimento: `0.2.0-beta.1`.
+
 ## Principios
 
 - Nada e apagado automaticamente.
@@ -26,6 +28,7 @@ DiskSnoop e um app desktop para Windows que ajuda a descobrir onde o espaco do S
 - Quarentena com restauracao, exclusao permanente confirmada e status para arquivos ausentes.
 - Historico de scans e acoes.
 - Configuracoes de limites, detectores, escopo, ignorados e local da quarentena.
+- Aba Atualizacao reservada para o fluxo futuro de updates, ainda sem download ou instalacao automatica.
 - Temas Claro e Escuro.
 
 ## Limites conhecidos
@@ -64,8 +67,8 @@ O build portatil sera gerado em `release/`.
 3. Crie uma tag:
 
 ```powershell
-git tag v0.1.0-beta.1
-git push origin v0.1.0-beta.1
+git tag v0.2.0-beta.1
+git push origin v0.2.0-beta.1
 ```
 
 4. O GitHub Actions vai gerar um draft de release marcado como pre-release.
@@ -74,3 +77,9 @@ git push origin v0.1.0-beta.1
 ## Seguranca
 
 O scanner mostra itens sensiveis no mapa de uso quando aparecem como pastas grandes, mas nao os coloca como candidatos normais de limpeza. Mover para quarentena remove o item do local original e guarda metadados para restauracao. Excluir permanentemente so acontece por acao explicita do usuario.
+
+## Roadmap curto
+
+- `0.2.0-beta`: polimento de UX, mensagens, candidatos mais confiaveis e acoes mais seguras.
+- `0.3.0-beta`: revisao final antes da linha estavel, empacotamento e preparacao do sistema de update.
+- `1.x`: primeira linha estavel depois das betas publicas.

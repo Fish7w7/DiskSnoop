@@ -69,8 +69,11 @@ function isDownloadsPath(itemPath) {
 }
 
 function isIgnored(itemPath) {
-  const normalized = toLowerPath(itemPath);
-  return config.ignoredPaths.some((ignored) => normalized.startsWith(toLowerPath(ignored)));
+  const normalized = toLowerPath(path.resolve(itemPath));
+  return config.ignoredPaths.some((ignored) => {
+    const ignoredPath = toLowerPath(path.resolve(ignored));
+    return normalized === ignoredPath || normalized.startsWith(`${ignoredPath}${path.sep}`);
+  });
 }
 
 function isInsideRoot(itemPath, rootPath) {

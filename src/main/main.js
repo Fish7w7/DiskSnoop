@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
+const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
 
@@ -151,8 +152,8 @@ function normalizeDriveRoot(letter) {
   return letter.endsWith("\\") ? letter : `${letter}\\`;
 }
 
-function friendlyFsError(error, source) {
-  if (error?.code === "EPERM" || error?.code === "EACCES") {
+function friendlyFsError(error) {
+  if (["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"].includes(error?.code)) {
     return new Error("O Windows bloqueou o acesso a este item. Ele pode estar protegido, em uso ou exigir permissoes de administrador.");
   }
   return error;
@@ -169,7 +170,8 @@ async function copyThenRemove(source, target) {
     await fs.copyFile(source, target, fscb.constants.COPYFILE_EXCL);
     await fs.rm(source, { force: true });
   } catch (error) {
-    throw friendlyFsError(error, source);
+    await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+    throw friendlyFsError(error);
   }
 }
 
@@ -178,8 +180,13 @@ async function movePath(source, target) {
   try {
     await fs.rename(source, target);
   } catch (error) {
-    if (error.code !== "EXDEV") throw friendlyFsError(error, source);
-    await copyThenRemove(source, target);
+    try {
+      if (error.code !== "EXDEV") throw friendlyFsError(error);
+      await copyThenRemove(source, target);
+    } catch (moveError) {
+      await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+      throw moveError;
+    }
   }
 }
 
@@ -194,6 +201,118 @@ function normalizeQuarantineRoot(selectedPath) {
 
 async function listQuarantine() {
   return readJson("quarantine.json", []);
+}
+
+async function quarantineRoots(records = []) {
+  const settings = await getSettings();
+  const roots = new Set([
+    normalizeQuarantineRoot(settings.quarantinePath),
+    normalizeQuarantineRoot("")
+  ]);
+  for (const record of records) {
+    if (record.quarantinePath) roots.add(path.dirname(record.quarantinePath));
+  }
+  return [...roots];
+}
+
+async function pathSize(targetPath) {
+  try {
+    const stat = await fs.lstat(targetPath);
+    if (stat.isSymbolicLink()) return 0;
+    if (stat.isFile()) return stat.size;
+    if (!stat.isDirectory()) return 0;
+    const entries = await fs.readdir(targetPath, { withFileTypes: true });
+    let total = 0;
+    for (const entry of entries) {
+      total += await pathSize(path.join(targetPath, entry.name));
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+function recoveredQuarantineName(fileName) {
+  return fileName.replace(/^\d{10,}-[a-f0-9]+-/i, "") || fileName;
+}
+
+function stableQuarantineId(record) {
+  const source = path.normalize(record.quarantinePath || `${record.originalPath || ""}|${record.name || ""}|${record.movedAt || ""}`).toLowerCase();
+  return `quarantine-${crypto.createHash("sha1").update(source).digest("hex").slice(0, 20)}`;
+}
+
+function ensureUniqueQuarantineIds(records) {
+  const seen = new Set();
+  let changed = false;
+  for (const record of records) {
+    const currentId = String(record.id || "");
+    if (!currentId || seen.has(currentId)) {
+      record.id = stableQuarantineId(record);
+      changed = true;
+    }
+    while (seen.has(record.id)) {
+      record.id = `${stableQuarantineId(record)}-${seen.size}`;
+      changed = true;
+    }
+    seen.add(record.id);
+  }
+  return changed;
+}
+
+async function syncedQuarantine() {
+  const records = await listQuarantine();
+  let changed = ensureUniqueQuarantineIds(records);
+  const knownPaths = new Set(records.map((record) => path.normalize(record.quarantinePath || "").toLowerCase()).filter(Boolean));
+
+  for (const record of records) {
+    const existsInQuarantine = record.quarantinePath && fscb.existsSync(record.quarantinePath);
+    if (existsInQuarantine && record.status !== "Em quarentena") {
+      record.status = "Em quarentena";
+      delete record.deletedAt;
+      delete record.restoredAt;
+      delete record.missingAt;
+      changed = true;
+      continue;
+    }
+    if (record.status === "Em quarentena" && !existsInQuarantine) {
+      record.status = "Arquivo ausente";
+      record.missingAt = new Date().toISOString();
+      changed = true;
+    }
+  }
+
+  for (const root of await quarantineRoots(records)) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(root, entry.name);
+      const normalized = path.normalize(fullPath).toLowerCase();
+      if (knownPaths.has(normalized)) continue;
+      const stat = await fs.lstat(fullPath).catch(() => null);
+      if (!stat || stat.isSymbolicLink()) continue;
+      const id = `recovered-${Buffer.from(normalized).toString("base64url")}`;
+      records.unshift({
+        id,
+        name: recoveredQuarantineName(entry.name),
+        originalPath: "",
+        quarantinePath: fullPath,
+        size: await pathSize(fullPath),
+        movedAt: stat.mtime.toISOString(),
+        status: "Em quarentena",
+        type: entry.isDirectory() ? "Pasta" : "Arquivo",
+        recovered: true
+      });
+      knownPaths.add(normalized);
+      changed = true;
+    }
+  }
+
+  if (changed) await saveQuarantine(records);
+  return records;
 }
 
 async function saveQuarantine(items) {
@@ -305,7 +424,7 @@ ipcMain.handle("app:paths", async () => {
   await fs.mkdir(defaultQuarantine, { recursive: true });
   return { userData, defaultQuarantine };
 });
-ipcMain.handle("quarantine:list", async () => listQuarantine());
+ipcMain.handle("quarantine:list", async () => syncedQuarantine());
 
 ipcMain.handle("path:listContents", async (_event, targetPath) => {
   if (!targetPath) return [];
@@ -318,7 +437,7 @@ ipcMain.handle("path:listContents", async (_event, targetPath) => {
   }
   const entries = await fs.readdir(listPath, { withFileTypes: true });
   const items = await Promise.all(entries.slice(0, 300).map(async (entry) => {
-    const itemPath = path.join(targetPath, entry.name);
+    const itemPath = path.join(listPath, entry.name);
     try {
       const stat = await fs.lstat(itemPath);
       return {
@@ -379,6 +498,7 @@ ipcMain.handle("path:open", async (_event, targetPath) => {
 
 ipcMain.handle("path:showInFolder", async (_event, targetPath) => {
   if (!targetPath) return { ok: false, error: "Caminho ausente." };
+  if (!fscb.existsSync(targetPath)) return { ok: false, error: "Caminho nao encontrado." };
   shell.showItemInFolder(targetPath);
   return { ok: true };
 });
@@ -415,7 +535,7 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const target = path.join(quarantineRoot, `${id}-${safeName(path.basename(item.path))}`);
     await movePath(item.path, target);
-    const records = await listQuarantine();
+    const records = await syncedQuarantine();
     const record = {
       id,
       name: item.name || path.basename(item.path),
@@ -437,9 +557,11 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
 
 ipcMain.handle("quarantine:restore", async (_event, id) => {
   try {
-    const records = await listQuarantine();
+    const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
     if (!record) throw new Error("Item de quarentena nao encontrado.");
+    if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para restauracao.");
+    if (!record.originalPath) throw new Error("Este item nao tem origem registrada. Abra a quarentena e restaure manualmente.");
     if (!fscb.existsSync(record.quarantinePath)) {
       record.status = "Arquivo ausente";
       record.missingAt = new Date().toISOString();
@@ -449,6 +571,7 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
     if (fscb.existsSync(record.originalPath)) {
       throw new Error("O caminho original ja existe. Restauracao manual recomendada.");
     }
+    await fs.mkdir(path.dirname(record.originalPath), { recursive: true });
     await movePath(record.quarantinePath, record.originalPath);
     record.status = "Restaurado";
     record.restoredAt = new Date().toISOString();
@@ -461,10 +584,14 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
 
 ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
   try {
-    const records = await listQuarantine();
+    const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
     if (!record) throw new Error("Item de quarentena nao encontrado.");
+    if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para exclusao permanente.");
     await fs.rm(record.quarantinePath, { recursive: true, force: true });
+    if (fscb.existsSync(record.quarantinePath)) {
+      throw new Error("O Windows nao confirmou a exclusao do item. Abra a quarentena e revise manualmente.");
+    }
     record.status = "Excluido permanentemente";
     record.deletedAt = new Date().toISOString();
     await saveQuarantine(records);
@@ -477,7 +604,7 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
 
 ipcMain.handle("quarantine:forgetMissing", async (_event, id) => {
   try {
-    const records = await listQuarantine();
+    const records = await syncedQuarantine();
     const index = records.findIndex((entry) => entry.id === id);
     if (index === -1) throw new Error("Item de quarentena nao encontrado.");
     if (records[index].status !== "Arquivo ausente") {
@@ -486,6 +613,18 @@ ipcMain.handle("quarantine:forgetMissing", async (_event, id) => {
     const [record] = records.splice(index, 1);
     await saveQuarantine(records);
     return ipcOk(record);
+  } catch (error) {
+    return ipcError(error);
+  }
+});
+
+ipcMain.handle("quarantine:cleanupRecords", async () => {
+  try {
+    const records = await syncedQuarantine();
+    const kept = records.filter((record) => record.status === "Em quarentena");
+    const removed = records.length - kept.length;
+    if (removed) await saveQuarantine(kept);
+    return ipcOk({ removed });
   } catch (error) {
     return ipcError(error);
   }
