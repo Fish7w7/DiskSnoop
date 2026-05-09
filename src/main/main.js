@@ -475,6 +475,22 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
   }
 });
 
+ipcMain.handle("quarantine:forgetMissing", async (_event, id) => {
+  try {
+    const records = await listQuarantine();
+    const index = records.findIndex((entry) => entry.id === id);
+    if (index === -1) throw new Error("Item de quarentena nao encontrado.");
+    if (records[index].status !== "Arquivo ausente") {
+      throw new Error("Apenas registros ausentes podem ser removidos.");
+    }
+    const [record] = records.splice(index, 1);
+    await saveQuarantine(records);
+    return ipcOk(record);
+  } catch (error) {
+    return ipcError(error);
+  }
+});
+
 ipcMain.handle("scan:start", async (_event, options) => {
   if (activeScan) {
     activeScan.kill();

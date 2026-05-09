@@ -16,6 +16,7 @@ const sensitiveSegments = [
   "\\$recycle.bin\\",
   "\\program files\\",
   "\\program files (x86)\\",
+  "\\programdata\\package cache\\",
   "\\programdata\\microsoft\\windows\\",
   "\\drivers\\"
 ];

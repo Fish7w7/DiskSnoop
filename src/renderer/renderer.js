@@ -2,6 +2,7 @@ const api = window.diskScope;
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
+const APP_VERSION_LABEL = "0.1.0-beta.1";
 
 const state = {
   screen: "welcome",
@@ -28,13 +29,14 @@ const state = {
   sort: "size",
   candidateScope: "Todos",
   candidateSafety: "Seguro revisar",
-  candidateAge: "Mais antigos",
+  candidateAge: "Prioridade",
+  candidateMinSize: 10 * MB,
   candidateLimit: 80,
   duplicateSearch: "",
   duplicateMinWaste: 0,
   selectedDuplicateId: "",
   leftoversSearch: "",
-  leftoversStatus: "Todos",
+  leftoversStatus: "Possível sobra",
   leftoversLocation: "Todos",
   leftoversLimit: 80,
   paused: false,
@@ -52,6 +54,7 @@ const tabs = [
   ["leftovers", "Sobras de Apps", "cube"],
   ["quarantine", "Quarentena", "shield"],
   ["history", "Histórico", "clock"],
+  ["updates", "Atualização", "download"],
   ["settings", "Configurações", "settings"]
 ];
 
@@ -555,6 +558,7 @@ function renderTab() {
   if (state.tab === "leftovers") return leftoversTab();
   if (state.tab === "quarantine") return quarantineTab();
   if (state.tab === "history") return historyTab();
+  if (state.tab === "updates") return updatesTab();
   if (state.tab === "settings") return settingsTab();
   return "";
 }
@@ -896,6 +900,7 @@ function filteredCandidates() {
   return [...(state.scanResult?.candidates || [])]
     .filter((item) => {
       if (query && !`${item.name} ${item.path} ${item.type}`.toLowerCase().includes(query)) return false;
+      if (!query && Number(state.candidateMinSize || 0) > 0 && item.size < Number(state.candidateMinSize)) return false;
       if (state.candidateScope !== "Todos" && cleanCandidateType(item.type) !== state.candidateScope) return false;
       if (state.candidateSafety === "Seguro revisar" && item.security !== "Seguro revisar") return false;
       if (state.candidateSafety === "Verificar antes" && item.security !== "Verificar antes") return false;
@@ -903,9 +908,33 @@ function filteredCandidates() {
       return true;
     })
     .sort((a, b) => {
+      if (state.candidateAge === "Prioridade") return candidatePriorityScore(b) - candidatePriorityScore(a);
       if (state.candidateAge === "Mais antigos") return new Date(a.modifiedAt || 0) - new Date(b.modifiedAt || 0);
       return b.size - a.size;
     });
+}
+
+function candidatePriorityScore(item) {
+  const type = cleanCandidateType(item.type);
+  const typeScore = {
+    Dev: 85,
+    Cache: 78,
+    Download: 68,
+    Instalador: 58,
+    Compactado: 50,
+    Logs: 48,
+    Temporario: 44,
+    "Arquivo grande": 30
+  }[type] || 20;
+  const safetyScore = item.security === "Seguro revisar" ? 28
+    : item.security === "Provavel removivel" || item.security === "Provável removível" ? 22
+      : item.security === "Verificar antes" ? 8
+        : -40;
+  const sizeMb = Math.max(1, (item.size || 0) / MB);
+  const sizeScore = Math.min(38, Math.log2(sizeMb) * 5);
+  const days = Math.max(0, (Date.now() - new Date(item.modifiedAt || 0).getTime()) / 86400000);
+  const ageScore = Math.min(18, days / 18);
+  return typeScore + safetyScore + sizeScore + ageScore;
 }
 
 function cleanCandidateType(type) {
@@ -924,6 +953,7 @@ function candidatesTab() {
   const items = filteredCandidates();
   const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
+  const totalCandidates = state.scanResult?.candidates?.length || 0;
   const safe = items.filter((item) => item.security === "Seguro revisar").length;
   const review = items.filter((item) => item.security === "Verificar antes").length;
   const selectedItems = (state.scanResult?.candidates || []).filter((item) => state.selectedIds.has(item.id));
@@ -933,13 +963,14 @@ function candidatesTab() {
     <section>
       <div class="page-heading">
         <h1>Candidatos à Limpeza</h1>
-        <p>${items.length} itens visíveis. ${safe} seguros para revisar, ${review} pedem verificação manual.</p>
+        <p>${items.length} itens visíveis de ${totalCandidates}. ${safe} seguros para revisar, ${review} pedem verificação manual.</p>
       </div>
       <div class="filters-row candidates-filters">
         <label class="search-box">${icon("search")}<input data-field="candidateSearch" value="${escapeHtml(state.candidateSearch)}" placeholder="Buscar item ou caminho..."></label>
         ${selectControl("candidateScope", ["Todos", "Dev", "Instalador", "Cache", "Logs", "Arquivo grande", "Download", "Compactado", "Temporario"], state.candidateScope)}
         ${selectControl("candidateSafety", ["Seguro revisar", "Provável removível", "Verificar antes", "Todos"], state.candidateSafety)}
-        ${selectControl("candidateAge", ["Mais antigos", "Maiores"], state.candidateAge)}
+        ${selectControl("candidateMinSize", [["Relevantes: 10 MB+", 10 * MB], ["Qualquer tamanho", 0], ["100 MB+", 100 * MB], ["1 GB+", GB]], state.candidateMinSize)}
+        ${selectControl("candidateAge", ["Prioridade", "Maiores", "Mais antigos"], state.candidateAge)}
       </div>
       <div class="selection-summary">
         <span>Mostrando ${visibleItems.length} de ${items.length}</span>
@@ -978,7 +1009,11 @@ function candidatesTab() {
 }
 
 function selectControl(field, options, current) {
-  return `<div class="select-shell wide-select"><select data-field="${field}">${options.map((item) => `<option value="${escapeHtml(item)}" ${current === item ? "selected" : ""}>${escapeHtml(item)}</option>`).join("")}</select>${icon("chevron")}</div>`;
+  return `<div class="select-shell wide-select"><select data-field="${field}">${options.map((item) => {
+    const label = Array.isArray(item) ? item[0] : item;
+    const value = Array.isArray(item) ? item[1] : item;
+    return `<option value="${escapeHtml(value)}" ${String(current) === String(value) ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  }).join("")}</select>${icon("chevron")}</div>`;
 }
 
 function candidateDetails(item) {
@@ -1032,6 +1067,7 @@ function duplicatesTab() {
         <h1>Possíveis Duplicados</h1>
         <p>${groups.length} grupos encontrados. Espaço revisável estimado: ${compactBytes(reviewable)}.</p>
       </div>
+      <div class="safety-note">${icon("shield")}Suspeita baseada em nome e tamanho. O DiskSnoop ainda não usa hash de conteúdo, então revise cada cópia antes de mover qualquer coisa.</div>
       <div class="filters-row duplicates-filters">
         <label class="search-box">${icon("search")}<input data-field="duplicateSearch" value="${escapeHtml(state.duplicateSearch)}" placeholder="Buscar arquivo ou caminho..."></label>
         <div class="select-shell wide-select">
@@ -1117,12 +1153,21 @@ function possibleLeftovers() {
   return (state.scanResult?.largeFolders || [])
     .filter((item) => {
       const lower = item.path.toLowerCase();
+      if (isNoisyLeftoverPath(lower)) return false;
       return lower.includes("\\appdata\\local\\")
         || lower.includes("\\appdata\\roaming\\")
         || lower.includes("\\programdata\\")
         || lower.includes("\\program files\\")
         || lower.includes("\\program files (x86)\\");
     });
+}
+
+function isNoisyLeftoverPath(lowerPath) {
+  return lowerPath.includes("\\programdata\\package cache\\")
+    || lowerPath.includes("\\programdata\\microsoft\\windows\\")
+    || lowerPath.includes("\\program files\\windowsapps\\")
+    || lowerPath.includes("\\program files\\common files\\")
+    || lowerPath.includes("\\program files (x86)\\common files\\");
 }
 
 function leftoverLocation(item) {
@@ -1153,6 +1198,7 @@ function leftoverStatus(item) {
   if (match) return ["App instalado", "low"];
   const lower = item.path.toLowerCase();
   if (lower.includes("\\program files\\")) return ["Verificar manualmente", "medium"];
+  if (isGenericAppDataFolder(item.name)) return ["Verificar manualmente", "medium"];
   if (lower.includes("\\appdata\\")) return ["Possível sobra", "medium"];
   if (lower.includes("\\programdata\\")) return ["App não encontrado?", "medium"];
   return ["Nome parecido", "low"];
@@ -1160,11 +1206,15 @@ function leftoverStatus(item) {
 
 function matchingInstalledApp(item) {
   const folderName = normalizeName(item.name);
-  if (!folderName) return null;
+  if (!folderName || folderName.length < 4 || isGenericAppDataFolder(item.name)) return null;
   return state.installedApps.find((appInfo) => {
     const appName = normalizeName(appInfo.name);
     return appName && (appName.includes(folderName) || folderName.includes(appName));
   });
+}
+
+function isGenericAppDataFolder(value) {
+  return new Set(["cache", "caches", "data", "packages", "temp", "tmp", "logs", "log", "local", "roaming"]).has(normalizeName(value));
 }
 
 function normalizeName(value) {
@@ -1186,6 +1236,7 @@ function leftoversTab() {
         <h1>Sobras de Apps</h1>
         <p>Possíveis pastas órfãs encontradas em AppData, ProgramData e Program Files. Esta tela é conservadora.</p>
       </div>
+      <div class="safety-note">${icon("shield")}Esses achados são pistas, não confirmação de sobra. Pastas ligadas a apps instalados ou com nome genérico ficam fora do foco principal.</div>
       <div class="leftover-summary">
         <span><strong>${allItems.length}</strong> analisadas</span>
         <span><strong>${possible}</strong> possíveis sobras</span>
@@ -1294,8 +1345,10 @@ function quarantineTab() {
           <p>Quarentena: ${escapeHtml(selected.quarantinePath || "-")}</p>
           <p>Status: ${escapeHtml(selected.status || "Em quarentena")}</p>
           <div class="detail-actions">
+            <button class="secondary" data-action="open-quarantine-item" data-path="${escapeHtml(selected.quarantinePath || "")}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("folder")}Abrir na quarentena</button>
             <button class="outline-primary" data-action="restore-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("reset")}Restaurar</button>
             <button class="outline-danger" data-action="delete-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("trash")}Excluir permanentemente</button>
+            <button class="secondary" data-action="forget-missing-quarantine" data-id="${escapeHtml(selected.id)}" ${selected.status === "Arquivo ausente" ? "" : "disabled"}>${icon("ban")}Remover registro ausente</button>
           </div>
         ` : `<p class="muted">Selecione um item em quarentena.</p>`}
       </section>
@@ -1362,6 +1415,62 @@ function shortOrigin(value) {
   const parts = value.split(/[\\/]/).filter(Boolean);
   if (parts.length <= 2) return value;
   return `${parts[0]}\\${parts[1]}`;
+}
+
+function updatesTab() {
+  return `
+    <section>
+      <div class="page-heading">
+        <h1>Atualização</h1>
+        <p>Espaço reservado para o sistema de updates do DiskSnoop.</p>
+      </div>
+
+      <section class="panel update-placeholder">
+        <div class="update-hero-icon">${icon("download")}</div>
+        <div class="update-copy">
+          <span class="beta-pill">Em preparação</span>
+          <h2>Sistema de atualização em preparação</h2>
+          <p>Essa área será usada futuramente para verificar novas versões, changelog e instalação de updates.</p>
+        </div>
+        <div class="update-status-grid">
+          <div><span>Versão atual</span><strong>${escapeHtml(APP_VERSION_LABEL)}</strong></div>
+          <div><span>Última versão disponível</span><strong>Em breve</strong></div>
+          <div><span>Canal</span><strong>Beta</strong></div>
+          <div><span>Status</span><strong>Update ainda não implementado</strong></div>
+        </div>
+        <div class="release-roadmap">
+          <article>
+            <span>Próxima</span>
+            <strong>0.2.0-beta</strong>
+            <p>Polimento de UX, segurança das ações e candidatos mais confiáveis.</p>
+          </article>
+          <article>
+            <span>Depois</span>
+            <strong>0.3.0-beta</strong>
+            <p>Revisão final de empacotamento, estabilidade e preparação do fluxo de update.</p>
+          </article>
+          <article>
+            <span>Meta</span>
+            <strong>1.x</strong>
+            <p>Primeira linha estável, com o comportamento principal maduro.</p>
+          </article>
+        </div>
+        <div class="update-future-list">
+          <h3>Preparado para receber depois</h3>
+          <ul>
+            <li>Verificar nova versão manualmente.</li>
+            <li>Mostrar changelog antes de atualizar.</li>
+            <li>Baixar atualização com confirmação do usuário.</li>
+            <li>Reiniciar para aplicar update quando isso existir.</li>
+          </ul>
+        </div>
+        <div class="detail-actions">
+          <button class="primary" disabled>${icon("download")}Verificar agora</button>
+          <button class="secondary" disabled>${icon("list")}Changelog em breve</button>
+        </div>
+      </section>
+    </section>
+  `;
 }
 
 function settingsTab() {
@@ -1755,6 +1864,10 @@ function updateSelectField(target) {
     state.candidateAge = target.value;
     state.candidateLimit = 80;
   }
+  if (field === "candidateMinSize") {
+    state.candidateMinSize = Number(target.value || 0);
+    state.candidateLimit = 80;
+  }
   if (field === "duplicateSearch") state.duplicateSearch = target.value;
   if (field === "duplicateMinWaste") state.duplicateMinWaste = Number(target.value || 0);
   if (field === "leftoversStatus") {
@@ -1939,13 +2052,17 @@ document.addEventListener("click", async (event) => {
     state.selectedQuarantineId = id;
     render();
   }
+  if (action === "open-quarantine-item") {
+    const targetPath = target.dataset.path;
+    if (targetPath) await api.showInFolder(targetPath);
+  }
   if (action === "restore-quarantine") {
     try {
       await api.restoreQuarantine(id);
       await refreshData();
       setToast("Item restaurado.");
     } catch (error) {
-      setToast(error.message);
+      setToast(cleanIpcError(error));
     }
   }
   if (action === "delete-quarantine") {
@@ -1963,7 +2080,25 @@ document.addEventListener("click", async (event) => {
       await refreshData();
       setToast("Item excluído permanentemente.");
     } catch (error) {
-      setToast(error.message);
+      setToast(cleanIpcError(error));
+    }
+  }
+  if (action === "forget-missing-quarantine") {
+    const ok = await confirmModal({
+      title: "Remover registro ausente",
+      message: "Esse arquivo não existe mais na quarentena. Apenas o registro do DiskSnoop será removido; nenhum arquivo será apagado.",
+      confirmText: "Remover registro",
+      icon: "ban"
+    });
+    if (!ok) return;
+    try {
+      await api.forgetMissingQuarantine(id);
+      state.selectedQuarantineId = "";
+      await refreshData();
+      render();
+      setToast("Registro ausente removido.");
+    } catch (error) {
+      setToast(cleanIpcError(error));
     }
   }
   if (action === "choose-quarantine") {
