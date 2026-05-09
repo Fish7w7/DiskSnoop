@@ -1,0 +1,43 @@
+{
+  "name": "disksnoop",
+  "version": "0.1.0",
+  "description": "Investigador visual de armazenamento para Windows.",
+  "main": "src/main/main.js",
+  "author": "DiskSnoop contributors",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/scanner/scanner.js && node --check src/renderer/renderer.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.disksnoop.app",
+    "productName": "DiskSnoop",
+    "artifactName": "DiskSnoop-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "src/assets/app-icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3",
+    "electron": "^31.7.7"
+  }
+}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DiskSnoop</title>
+    <script>
+      try {
+        const t = localStorage.getItem("disksnoop-theme");
+        if (t) document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <main class="boot-screen">
+        <div class="boot-bg-grid"></div>
+        <div class="boot-glow"></div>
+        <section class="boot-card">
+          <div class="boot-icon-ring">
+            <div class="boot-icon-wrap">
+              <img src="../assets/app-icon.png" alt="" />
+            </div>
+          </div>
+          <h1>DiskSnoop</h1>
+          <p class="boot-status">Carregando configurações...</p>
+          <div class="boot-loader">
+            <span></span>
+          </div>
+          <div class="boot-meta">
+            <span class="boot-dot"></span>
+            <span class="boot-version">v0.1.0</span>
+          </div>
+        </section>
+      </main>
+      <script>
+        const msgs = [
+          "Carregando configurações...",
+          "Detectando discos locais...",
+          "Verificando quarentena...",
+          "Carregando histórico...",
+          "Quase pronto..."
+        ];
+        let i = 0;
+        const el = document.querySelector(".boot-status");
+        const iv = setInterval(() => {
+          i = (i + 1) % msgs.length;
+          if (el) el.textContent = msgs[i];
+        }, 1600);
+      </script>
+    </div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
