@@ -346,6 +346,7 @@ textarea {
 
 select {
   appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   padding-right: 44px;
 }
@@ -1126,15 +1127,144 @@ table {
 }
 
 .history-table {
-  min-width: 1280px;
+  min-width: 1120px;
   font-size: 14px;
+}
+
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) {
+  width: 130px;
+}
+
+.history-table th:nth-child(12),
+.history-table td:nth-child(12) {
+  width: 110px;
 }
 
 .history-summary-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.history-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.history-scan-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(360px, 2fr) auto;
+  gap: 18px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.history-scan-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.history-scan-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--accentSoft);
+  color: var(--accent);
+}
+
+.history-scan-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.history-scan-main h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.history-scan-main p {
+  margin-top: 4px;
+  color: var(--textMuted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-scan-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.history-scan-metrics span {
+  display: grid;
+  gap: 2px;
+  color: var(--textMuted);
+  font-size: 12px;
+}
+
+.history-scan-metrics strong {
+  color: var(--textPrimary);
+  font-size: 14px;
+}
+
+.history-scan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.history-status {
+  border: 1px solid color-mix(in srgb, var(--success) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  color: color-mix(in srgb, var(--success) 88%, var(--textPrimary));
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.history-status.missing {
+  border-color: color-mix(in srgb, var(--warning) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  color: color-mix(in srgb, var(--warning) 88%, var(--textPrimary));
+}
+
+.empty-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px;
+}
+
+.empty-panel .icon {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+}
+
+.empty-panel h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.empty-panel p {
+  margin-top: 4px;
+  color: var(--textMuted);
 }
 
 .history-table th,
@@ -1154,6 +1284,12 @@ table {
 
 .table-action:hover {
   background: var(--accentSoft);
+}
+
+.table-action:disabled {
+  cursor: not-allowed;
+  color: var(--textMuted);
+  opacity: 0.65;
 }
 
 .candidates-table {
@@ -1629,6 +1765,15 @@ input[type="checkbox"] {
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface) 84%, var(--background));
   padding: 6px 8px 6px 12px;
+}
+
+.duplicate-copy-row.reference {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accentSoft) 42%, var(--surface));
+}
+
+.duplicate-copy-row.suspect {
+  background: color-mix(in srgb, var(--surface) 88%, var(--warningSoft));
 }
 
 .duplicate-copy-row span {
@@ -2762,6 +2907,7 @@ input[type="checkbox"] {
   .metric-cards,
   .report-grid,
   .history-summary-cards,
+  .history-scan-card,
   .update-placeholder,
   .update-status-grid,
   .release-roadmap,
@@ -2801,6 +2947,14 @@ input[type="checkbox"] {
   .duplicate-copy-row {
     grid-template-columns: 1fr;
   }
+
+  .history-scan-actions {
+    justify-content: flex-start;
+  }
+
+  .history-scan-main p {
+    white-space: normal;
+  }
 }
 
 @media (max-width: 900px) {
@@ -2819,5 +2973,9 @@ input[type="checkbox"] {
 
   .content {
     padding: 20px;
+  }
+
+  .history-scan-metrics {
+    grid-template-columns: repeat(2, minmax(92px, 1fr));
   }
 }

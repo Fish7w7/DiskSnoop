@@ -3,7 +3,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-const APP_VERSION_LABEL = "0.2.0-beta.1";
+const APP_VERSION_LABEL = "0.3.0-beta.1";
 
 const state = {
   screen: "welcome",
@@ -13,6 +13,7 @@ const state = {
   settings: null,
   scanProgress: null,
   scanResult: null,
+  reportMode: "none",
   hiddenPaths: new Set(),
   selectedItem: null,
   selectedIds: new Set(),
@@ -21,6 +22,8 @@ const state = {
   quarantine: [],
   history: [],
   installedApps: [],
+  isPackaged: false,
+  appPaths: null,
   contentPreview: null,
   modal: null,
   search: "",
@@ -31,12 +34,12 @@ const state = {
   sizeFilter: 1,
   sort: "size",
   candidateScope: "Todos",
-  candidateSafety: "Seguro revisar",
+  candidateSafety: "Revisáveis",
   candidateAge: "Prioridade",
   candidateMinSize: 10 * MB,
   candidateLimit: 80,
   duplicateSearch: "",
-  duplicateMinWaste: 0,
+  duplicateMinWaste: 100 * MB,
   selectedDuplicateId: "",
   leftoversSearch: "",
   leftoversStatus: "Possível sobra",
@@ -127,15 +130,20 @@ function escapeHtml(value) {
 }
 
 function formatBytes(bytes = 0) {
-  if (!bytes) return "0 B";
+  if (!Number.isFinite(Number(bytes)) || !bytes) return "0 B";
+  const sign = bytes < 0 ? "-" : "";
+  const value = Math.abs(bytes);
   const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** index).toFixed(index < 2 ? 0 : 1)} ${units[index]}`;
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${sign}${(value / 1024 ** index).toFixed(index < 2 ? 0 : 1)} ${units[index]}`;
 }
 
 function compactBytes(bytes = 0) {
-  if (bytes >= GB) return `${Math.round(bytes / GB)} GB`;
-  if (bytes >= MB) return `${Math.round(bytes / MB)} MB`;
+  if (!Number.isFinite(Number(bytes)) || !bytes) return "0 B";
+  const sign = bytes < 0 ? "-" : "";
+  const value = Math.abs(bytes);
+  if (value >= GB) return `${sign}${Math.round(value / GB)} GB`;
+  if (value >= MB) return `${sign}${Math.round(value / MB)} MB`;
   return formatBytes(bytes);
 }
 
@@ -315,6 +323,21 @@ function clearHiddenPaths() {
   persistHiddenPaths();
 }
 
+function readCachedScan() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LAST_SCAN_KEY) || "null");
+    if (!cached?.id || !cached?.drive || !Array.isArray(cached.candidates)) return null;
+    return cached;
+  } catch {
+    localStorage.removeItem(LAST_SCAN_KEY);
+    return null;
+  }
+}
+
+function hasValidCachedScan() {
+  return Boolean(readCachedScan());
+}
+
 function syncHiddenPathsFromQuarantine(records = state.quarantine) {
   let changed = false;
   const blockedOriginals = new Set();
@@ -471,7 +494,7 @@ function driveBarClass(pct) {
 
 function disksScreen() {
   const urgent = mostUrgentDrive();
-  const hasCachedScan = Boolean(localStorage.getItem(LAST_SCAN_KEY));
+  const hasCachedScan = hasValidCachedScan();
   return `
     <div class="window">
       ${appHeader()}
@@ -483,7 +506,7 @@ function disksScreen() {
           </div>
           <div class="button-row">
             ${hasCachedScan ? `<button class="secondary" data-action="load-cached-scan">Último scan</button>` : ""}
-            <button class="secondary" data-action="load-test-scan">Bypass teste</button>
+            ${state.isPackaged ? "" : `<button class="secondary" data-action="load-test-scan">Bypass teste</button>`}
           </div>
         </div>
         <section class="drive-grid">
@@ -667,6 +690,28 @@ function currentHistoryEntry() {
   return (state.history || []).find((item) => item.id === state.scanResult?.id);
 }
 
+function isDevTestScan() {
+  return state.reportMode === "test" || (!state.isPackaged && String(state.scanResult?.id || "").startsWith("test-"));
+}
+
+function isLatestTrackedReport() {
+  if (!state.scanResult?.id) return false;
+  if (isDevTestScan()) return true;
+  if (state.reportMode === "current") return true;
+  return Boolean(state.history?.[0]?.id && state.history[0].id === state.scanResult.id);
+}
+
+function isViewingHistoricalReport() {
+  if (!state.scanResult?.id || isDevTestScan()) return false;
+  if (state.reportMode === "review") return true;
+  return !isLatestTrackedReport();
+}
+
+function historicalReportNote() {
+  if (!isViewingHistoricalReport()) return "";
+  return `<div class="safety-note">${icon("clock")}Relatório antigo ou sem vínculo com o último scan. Para evitar ações em dados possivelmente desatualizados, mover para quarentena fica bloqueado aqui. Faça um novo scan para agir sobre o estado atual do disco.</div>`;
+}
+
 function duplicateReviewableTotal() {
   return duplicateGroups().reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
 }
@@ -689,6 +734,7 @@ function overviewTab() {
   const largest = top[0]?.[1] || 1;
   const durationMs = historyEntry?.durationMs || (new Date(result.finishedAt).getTime() - new Date(result.startedAt).getTime());
   const scannedRoots = result.scanRoots?.length || 1;
+  const isHistoricalReport = isViewingHistoricalReport();
 
   return `
     <section class="overview">
@@ -697,8 +743,9 @@ function overviewTab() {
           <h1>${escapeHtml(normalizeMediaType(drive.type))} ${escapeHtml(drive.letter)}</h1>
           <p>${compactBytes(drive.used)} usados de ${compactBytes(drive.total)}</p>
         </div>
-        <span>Último scan: hoje</span>
+        <span>${isHistoricalReport ? "Relatório histórico" : "Último scan"}: ${relativeDate(result.finishedAt)}</span>
       </div>
+      ${isHistoricalReport ? historicalReportNote() : ""}
 
       <section class="metric-cards">
         <article class="metric-card">
@@ -915,6 +962,7 @@ function largeFilesTab() {
         <h1>Arquivos Grandes</h1>
         <p>${items.length} arquivos encontrados acima de ${formatBytes(state.fileSizeFilter)}. Total visível: ${compactBytes(total)}.</p>
       </div>
+      ${historicalReportNote()}
       <div class="filters-row files-filters">
         <label class="search-box">${icon("search")}<input data-field="fileSearch" value="${escapeHtml(state.fileSearch)}" placeholder="Buscar arquivo ou caminho..."></label>
         <div class="select-shell wide-select">
@@ -992,6 +1040,7 @@ function filteredCandidates() {
       if (query && !`${item.name} ${item.path} ${item.type}`.toLowerCase().includes(query)) return false;
       if (!query && Number(state.candidateMinSize || 0) > 0 && item.size < Number(state.candidateMinSize)) return false;
       if (state.candidateScope !== "Todos" && cleanCandidateType(item.type) !== state.candidateScope) return false;
+      if (state.candidateSafety === "Revisáveis" && !isLowRiskCandidate(item)) return false;
       if (state.candidateSafety === "Seguro revisar" && item.security !== "Seguro revisar") return false;
       if (state.candidateSafety === "Verificar antes" && item.security !== "Verificar antes") return false;
       if ((state.candidateSafety === "Provavel removivel" || state.candidateSafety === "Provável removível") && item.security !== "Provavel removivel" && item.security !== "Provável removível") return false;
@@ -1002,6 +1051,14 @@ function filteredCandidates() {
       if (state.candidateAge === "Mais antigos") return new Date(a.modifiedAt || 0) - new Date(b.modifiedAt || 0);
       return b.size - a.size;
     });
+}
+
+function isProbablyRemovable(item) {
+  return item?.security === "Provavel removivel" || item?.security === "Provável removível";
+}
+
+function isLowRiskCandidate(item) {
+  return item?.security === "Seguro revisar" || isProbablyRemovable(item);
 }
 
 function candidatePriorityScore(item) {
@@ -1017,7 +1074,7 @@ function candidatePriorityScore(item) {
     "Arquivo grande": 30
   }[type] || 20;
   const safetyScore = item.security === "Seguro revisar" ? 28
-    : item.security === "Provavel removivel" || item.security === "Provável removível" ? 22
+    : isProbablyRemovable(item) ? 22
       : item.security === "Verificar antes" ? 8
         : -40;
   const sizeMb = Math.max(1, (item.size || 0) / MB);
@@ -1025,6 +1082,15 @@ function candidatePriorityScore(item) {
   const days = Math.max(0, (Date.now() - new Date(item.modifiedAt || 0).getTime()) / 86400000);
   const ageScore = Math.min(18, days / 18);
   return typeScore + safetyScore + sizeScore + ageScore;
+}
+
+function candidateSafetySummary(items = visibleCandidates()) {
+  return {
+    safe: items.filter((item) => item.security === "Seguro revisar").length,
+    likely: items.filter(isProbablyRemovable).length,
+    review: items.filter((item) => item.security === "Verificar antes").length,
+    blocked: items.filter((item) => !canMoveToQuarantine(item)).length
+  };
 }
 
 function cleanCandidateType(type) {
@@ -1044,8 +1110,7 @@ function candidatesTab() {
   const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   const totalCandidates = state.scanResult?.candidates?.length || 0;
-  const safe = items.filter((item) => item.security === "Seguro revisar").length;
-  const review = items.filter((item) => item.security === "Verificar antes").length;
+  const summary = candidateSafetySummary();
   const selectedItems = selectedCandidateItems();
   const selectedSize = selectedItems.reduce((sum, item) => sum + item.size, 0);
   const visibleItems = items.slice(0, state.candidateLimit);
@@ -1054,12 +1119,20 @@ function candidatesTab() {
     <section>
       <div class="page-heading">
         <h1>Candidatos à Limpeza</h1>
-        <p>${items.length} itens visíveis de ${totalCandidates}. ${safe} seguros para revisar, ${review} pedem verificação manual.</p>
+        <p>${items.length} itens visíveis de ${totalCandidates}. O filtro padrão mostra achados revisáveis e evita itens que exigem cautela maior.</p>
+      </div>
+      ${historicalReportNote()}
+      <div class="safety-note">${icon("shield")}Candidatos são sugestões de revisão, não comandos de limpeza. Itens protegidos, sensíveis ou ligados a apps instalados ficam bloqueados para quarentena normal.</div>
+      <div class="leftover-summary candidate-summary">
+        <span><strong>${summary.safe}</strong> seguros</span>
+        <span><strong>${summary.likely}</strong> prováveis removíveis</span>
+        <span><strong>${summary.review}</strong> verificar antes</span>
+        <span><strong>${summary.blocked}</strong> bloqueados</span>
       </div>
       <div class="filters-row candidates-filters">
         <label class="search-box">${icon("search")}<input data-field="candidateSearch" value="${escapeHtml(state.candidateSearch)}" placeholder="Buscar item ou caminho..."></label>
         ${selectControl("candidateScope", ["Todos", "Dev", "Instalador", "Cache", "Logs", "Arquivo grande", "Download", "Compactado", "Temporario"], state.candidateScope)}
-        ${selectControl("candidateSafety", ["Seguro revisar", "Provável removível", "Verificar antes", "Todos"], state.candidateSafety)}
+        ${selectControl("candidateSafety", ["Revisáveis", "Seguro revisar", "Provável removível", "Verificar antes", "Todos"], state.candidateSafety)}
         ${selectControl("candidateMinSize", [["Relevantes: 10 MB+", 10 * MB], ["Qualquer tamanho", 0], ["100 MB+", 100 * MB], ["1 GB+", GB]], state.candidateMinSize)}
         ${selectControl("candidateAge", ["Prioridade", "Maiores", "Mais antigos"], state.candidateAge)}
       </div>
@@ -1153,6 +1226,7 @@ function isProtectedUiPath(itemPath) {
 
 function canMoveToQuarantine(item) {
   if (!item?.path) return false;
+  if (isViewingHistoricalReport()) return false;
   if (item.security === "Sensivel" || item.security === "Sensível") return false;
   if (isProtectedUiPath(item.path)) return false;
   const lower = item.path.toLowerCase();
@@ -1161,12 +1235,15 @@ function canMoveToQuarantine(item) {
     || lower.includes("\\program files\\");
   if (looksLikeAppLeftover && item.type === "Pasta") {
     const [status] = leftoverStatus(item);
-    if (status === "App instalado" || status === "Verificar manualmente") return false;
+    if (status !== "Possível sobra") return false;
   }
   return true;
 }
 
 function blockedQuarantineReason(item) {
+  if (isViewingHistoricalReport()) {
+    return "Este item vem de um relatório histórico. Faça um novo scan antes de mover para quarentena, para garantir que o caminho e o tamanho ainda estão atuais.";
+  }
   if (item?.security === "Sensivel" || item?.security === "Sensível" || isProtectedUiPath(item?.path)) {
     return "Este item fica em área sensível ou protegida do Windows. O DiskSnoop mostra o espaço, mas não coloca isso como ação normal de quarentena.";
   }
@@ -1199,14 +1276,22 @@ function duplicatesTab() {
   const groups = duplicateGroups();
   const selected = selectedDuplicate(groups);
   if (selected && state.selectedDuplicateId !== selected.id) state.selectedDuplicateId = selected.id;
+  if (!selected && state.selectedDuplicateId) state.selectedDuplicateId = "";
   const reviewable = groups.reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
+  const totalCopies = groups.reduce((sum, group) => sum + (group.items?.length || 0), 0);
   return `
     <section>
       <div class="page-heading">
         <h1>Possíveis Duplicados</h1>
-        <p>${groups.length} grupos encontrados. Espaço revisável estimado: ${compactBytes(reviewable)}.</p>
+        <p>${groups.length} grupos visíveis. Espaço revisável estimado: ${compactBytes(reviewable)}.</p>
       </div>
       <div class="safety-note">${icon("shield")}Suspeita baseada em nome e tamanho. O DiskSnoop ainda não usa hash de conteúdo, então revise cada cópia antes de mover qualquer coisa.</div>
+      <div class="leftover-summary duplicate-summary">
+        <span><strong>${groups.length}</strong> grupos</span>
+        <span><strong>${totalCopies}</strong> cópias</span>
+        <span><strong>${compactBytes(reviewable)}</strong> estimado</span>
+        <span><strong>0</strong> ações automáticas</span>
+      </div>
       <div class="filters-row duplicates-filters">
         <label class="search-box">${icon("search")}<input data-field="duplicateSearch" value="${escapeHtml(state.duplicateSearch)}" placeholder="Buscar arquivo ou caminho..."></label>
         <div class="select-shell wide-select">
@@ -1261,15 +1346,15 @@ function duplicateDetails(group) {
       </div>
       <div class="duplicate-copy-list">
         ${items.map((item, index) => `
-          <div class="duplicate-copy-row">
-            <span>${icon("file")}<strong>${index === 0 ? "Mais recente" : `Cópia ${index + 1}`}</strong></span>
+          <div class="duplicate-copy-row ${index === 0 ? "reference" : "suspect"}">
+            <span>${icon("file")}<strong>${index === 0 ? "Referência mais recente" : `Cópia suspeita ${index}`}</strong></span>
             <code title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
             <small>${relativeDate(item.modifiedAt)}</small>
             <button class="table-action" data-action="open-path" data-path="${escapeHtml(item.path)}">Abrir</button>
           </div>
         `).join("")}
       </div>
-      <p class="muted">O DiskSnoop ainda não compara hash do conteúdo. Use esta tela como pista visual antes de mover qualquer arquivo.</p>
+      <p class="muted">A primeira linha é apenas a cópia mais recente pelo horário de modificação, não uma decisão de qual arquivo manter. Abra os caminhos e compare o conteúdo antes de mover qualquer cópia por outra aba.</p>
     </section>
   `;
 }
@@ -1306,7 +1391,7 @@ function quarantineItemIcon(item) {
 function filteredQuarantine() {
   const items = state.quarantine || [];
   if (state.quarantineFilter === "Ativos") return items.filter((item) => item.status === "Em quarentena");
-  if (state.quarantineFilter === "Problemas") return items.filter(isQuarantineProblem);
+  if (state.quarantineFilter === "Ausentes" || state.quarantineFilter === "Problemas") return items.filter(isQuarantineProblem);
   if (state.quarantineFilter === "Finalizados") return items.filter(isQuarantineFinalized);
   return items;
 }
@@ -1364,7 +1449,19 @@ function filteredLeftovers() {
       if (state.leftoversLocation !== "Todos" && leftoverLocation(item) !== state.leftoversLocation) return false;
       return true;
     })
-    .sort((a, b) => b.size - a.size);
+    .sort((a, b) => {
+      const statusOrder = {
+        "Possível sobra": 0,
+        "App não encontrado?": 1,
+        "Verificar manualmente": 2,
+        "App instalado": 3,
+        "Nome parecido": 4
+      };
+      const statusA = statusOrder[leftoverStatus(a)[0]] ?? 9;
+      const statusB = statusOrder[leftoverStatus(b)[0]] ?? 9;
+      if (statusA !== statusB) return statusA - statusB;
+      return b.size - a.size;
+    });
 }
 
 function leftoverStatus(item) {
@@ -1410,7 +1507,8 @@ function leftoversTab() {
         <h1>Sobras de Apps</h1>
         <p>Possíveis pastas órfãs encontradas em AppData, ProgramData e Program Files. Esta tela é conservadora.</p>
       </div>
-      <div class="safety-note">${icon("shield")}Esses achados são pistas, não confirmação de sobra. Pastas ligadas a apps instalados ou com nome genérico ficam fora do foco principal.</div>
+      ${historicalReportNote()}
+      <div class="safety-note">${icon("shield")}Esses achados são pistas, não confirmação de sobra. Só itens marcados como possível sobra ficam disponíveis para quarentena normal; o restante deve ser aberto e revisado manualmente.</div>
       <div class="leftover-summary">
         <span><strong>${allItems.length}</strong> analisadas</span>
         <span><strong>${possible}</strong> possíveis sobras</span>
@@ -1474,6 +1572,7 @@ function leftoverDetails(item) {
         </div>
       </div>
       <p>${match ? `Nome parecido com app instalado: ${escapeHtml(match.name)}. ` : ""}O DiskSnoop encontrou esta pasta em uma área comum de dados de aplicativos. Isso não significa que ela pode ser removida automaticamente; abra a pasta e confirme se o app ainda existe ou se os dados são importantes.</p>
+      ${status === "Possível sobra" ? `<p class="muted">Este item não bateu com a lista de apps instalados e fica em uma área comum de cache/dados locais. Ainda assim, revise o conteúdo antes de mover para quarentena.</p>` : `<p class="muted">Por segurança, este status não é tratado como remoção normal. Use a ação de abrir pasta e revise manualmente.</p>`}
       ${childrenSummary(item)}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
@@ -1494,7 +1593,7 @@ function quarantineTab() {
   const canRestoreSelected = selected?.status === "Em quarentena" && Boolean(selected.originalPath);
   const canDeleteSelected = selected?.status === "Em quarentena";
   const emptyMessage = state.quarantineFilter === "Ativos"
-    ? "Nenhum item ativo na quarentena. Registros antigos ficam em Problemas ou Finalizados."
+    ? "Nenhum item ativo na quarentena. Registros antigos ficam em Ausentes ou Finalizados."
     : "Nenhum item neste filtro.";
   return `
     <section>
@@ -1505,7 +1604,7 @@ function quarantineTab() {
       <div class="safety-note">${icon("shield")}Registros finalizados e arquivos ausentes ficam separados para não bagunçar sua revisão. Limpar registros encerrados remove apenas o histórico local da quarentena.</div>
       <div class="quarantine-toolbar">
         <div class="quarantine-tabs">
-          ${["Ativos", "Problemas", "Finalizados", "Todos"].map((filter) => `
+          ${["Ativos", "Ausentes", "Finalizados", "Todos"].map((filter) => `
             <button class="${state.quarantineFilter === filter ? "active" : ""}" data-action="quarantine-filter" data-filter="${filter}">
               ${escapeHtml(filter)}
             </button>
@@ -1563,9 +1662,13 @@ function quarantineTab() {
 function historyTab() {
   const scans = state.history || [];
   const totalMoved = scans.reduce((sum, item) => sum + (item.movedToQuarantine || 0), 0);
+  const totalRestored = scans.reduce((sum, item) => sum + (item.restoredFromQuarantine || 0), 0);
   const totalDeleted = scans.reduce((sum, item) => sum + (item.permanentlyDeleted || 0), 0);
+  const unavailable = scans.filter((item) => item.snapshotAvailable === false).length;
   const last = scans[0];
-  const freeDelta = last ? (last.freeAfter || 0) - (last.freeBefore || 0) : 0;
+  const hasFreeDelta = Number.isFinite(Number(last?.freeAfter)) && Number.isFinite(Number(last?.freeBefore));
+  const freeDelta = hasFreeDelta ? Number(last.freeAfter) - Number(last.freeBefore) : 0;
+  const freeDeltaLabel = hasFreeDelta ? `${freeDelta >= 0 ? "+" : ""}${compactBytes(freeDelta)}` : "-";
   return `
     <section>
       <div class="page-heading">
@@ -1575,36 +1678,45 @@ function historyTab() {
       <section class="history-summary-cards">
         <article class="history-summary-card"><span>Scans</span><strong>${scans.length}</strong></article>
         <article class="history-summary-card"><span>Movido para quarentena</span><strong>${compactBytes(totalMoved)}</strong></article>
+        <article class="history-summary-card"><span>Restaurado</span><strong>${compactBytes(totalRestored)}</strong></article>
         <article class="history-summary-card"><span>Excluído permanente</span><strong>${compactBytes(totalDeleted)}</strong></article>
-        <article class="history-summary-card"><span>Última variação livre</span><strong>${freeDelta >= 0 ? "+" : ""}${compactBytes(freeDelta)}</strong></article>
+        <article class="history-summary-card"><span>Relatórios indisponíveis</span><strong>${unavailable}</strong></article>
       </section>
-      <section class="panel table-panel">
-        <table class="history-table">
-          <thead><tr><th>Data</th><th>Disco</th><th>Duração</th><th>Candidatos</th><th>Duplicados</th><th>Sem acesso</th><th>Revisável</th><th>Quarentena</th><th>Excluído</th><th>Livre antes</th><th>Livre depois</th><th>Ação</th></tr></thead>
-          <tbody>
-            ${(state.history || []).map((item) => `
-              <tr>
-                <td>${fullDate(item.date)}</td>
-                <td>${escapeHtml(item.drive)}</td>
-                <td>${durationLabel(item.durationMs)}</td>
-                <td>${Number(item.candidates || 0).toLocaleString("pt-BR")}</td>
-                <td>${Number(item.duplicates || 0).toLocaleString("pt-BR")}</td>
-                <td>${Number(item.skipped || 0).toLocaleString("pt-BR")}</td>
-                <td>${compactBytes(item.reviewable || 0)}</td>
-                <td>${compactBytes(item.movedToQuarantine || 0)}</td>
-                <td>${compactBytes(item.permanentlyDeleted || 0)}</td>
-                <td>${compactBytes(item.freeBefore || 0)}</td>
-                <td>${compactBytes(item.freeAfter || 0)}</td>
-                <td><button class="table-action" data-action="load-history-scan" data-id="${escapeHtml(item.id)}">Carregar</button></td>
-              </tr>
-            `).join("") || `<tr><td colspan="12" class="empty-soft">Nenhum scan registrado ainda.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="history-list">
+        ${scans.map((item) => `
+          <article class="history-scan-card">
+            <div class="history-scan-main">
+              <span class="history-scan-icon">${icon(item.snapshotAvailable === false ? "ban" : "clock")}</span>
+              <div>
+                <h3>${fullDate(item.date)}</h3>
+                <p>Disco ${escapeHtml(item.drive || "-")} · ${durationLabel(item.durationMs)} · livre ${Number.isFinite(Number(item.freeBefore)) ? compactBytes(Number(item.freeBefore)) : "-"} → ${Number.isFinite(Number(item.freeAfter)) ? compactBytes(Number(item.freeAfter)) : "-"}</p>
+              </div>
+            </div>
+            <div class="history-scan-metrics">
+              <span><strong>${Number(item.candidates || 0).toLocaleString("pt-BR")}</strong> candidatos</span>
+              <span><strong>${Number(item.duplicates || 0).toLocaleString("pt-BR")}</strong> duplicados</span>
+              <span><strong>${Number(item.skipped || 0).toLocaleString("pt-BR")}</strong> sem acesso</span>
+              <span><strong>${compactBytes(item.reviewable || 0)}</strong> revisável</span>
+              <span><strong>${compactBytes(item.movedToQuarantine || 0)}</strong> quarentena</span>
+              <span><strong>${compactBytes(item.restoredFromQuarantine || 0)}</strong> restaurado</span>
+              <span><strong>${compactBytes(item.permanentlyDeleted || 0)}</strong> excluído</span>
+            </div>
+            <div class="history-scan-actions">
+              <span class="${item.snapshotAvailable === false ? "history-status missing" : "history-status"}">
+                ${item.snapshotAvailable === false ? "Snapshot ausente" : "Relatório carregável"}
+              </span>
+              <button class="table-action" data-action="load-history-scan" data-id="${escapeHtml(item.id)}" ${item.snapshotAvailable === false ? "disabled" : ""}>
+                ${item.snapshotAvailable === false ? "Indisponível" : "Carregar"}
+              </button>
+            </div>
+          </article>
+        `).join("") || `<section class="panel empty-panel">${icon("clock")}<div><h3>Nenhum scan registrado ainda</h3><p>Quando você concluir um scan, ele aparecerá aqui com métricas e link para carregar o relatório salvo.</p></div></section>`}
       </section>
       <h2>Resumo atual</h2>
       <section class="panel history-panel">
         <p>${icon("clock")} Último scan carregado: ${state.scanResult ? fullDate(state.scanResult.finishedAt) : "nenhum"}</p>
         <p>${icon("shield")} Em quarentena agora: ${compactBytes(totalQuarantined())}</p>
+        <p>${icon("disk")} Última variação livre registrada: ${freeDeltaLabel}</p>
       </section>
     </section>
   `;
@@ -1618,46 +1730,49 @@ function shortOrigin(value) {
 }
 
 function updatesTab() {
+  const releaseDate = "Em desenvolvimento";
   return `
     <section>
       <div class="page-heading">
         <h1>Atualização</h1>
-        <p>Espaço reservado para o sistema de updates do DiskSnoop.</p>
+        <p>Espaço reservado para o sistema de updates do DiskSnoop. Ainda não há verificação automática nesta beta.</p>
       </div>
 
       <section class="panel update-placeholder">
         <div class="update-hero-icon">${icon("download")}</div>
         <div class="update-copy">
-          <span class="beta-pill">Em preparação</span>
+          <span class="beta-pill">Preparado para o futuro</span>
           <h2>Sistema de atualização em preparação</h2>
-          <p>Essa área será usada futuramente para verificar novas versões, changelog e instalação de updates.</p>
+          <p>Essa área será usada futuramente para verificar novas versões, changelog e instalação de updates. Por enquanto ela só reserva o fluxo visual, sem consultar GitHub Releases, baixar arquivos ou reiniciar o app.</p>
         </div>
         <div class="update-status-grid">
           <div><span>Versão atual</span><strong>${escapeHtml(APP_VERSION_LABEL)}</strong></div>
           <div><span>Última versão disponível</span><strong>Em breve</strong></div>
           <div><span>Canal</span><strong>Beta</strong></div>
-          <div><span>Status</span><strong>Update ainda não implementado</strong></div>
+          <div><span>Status</span><strong>${releaseDate}</strong></div>
         </div>
         <div class="release-roadmap">
           <article>
-            <span>Próxima</span>
-            <strong>0.2.0-beta</strong>
-            <p>Polimento de UX, segurança das ações e candidatos mais confiáveis.</p>
+            <span>Atual</span>
+            <strong>0.3.0-beta</strong>
+            <p>Revisão final de estabilidade, histórico, quarentena, empacotamento e UX antes da linha estável.</p>
           </article>
           <article>
             <span>Depois</span>
-            <strong>0.3.0-beta</strong>
-            <p>Revisão final de empacotamento, estabilidade e preparação do fluxo de update.</p>
+            <strong>1.0</strong>
+            <p>Primeira versão estável com o fluxo principal fechado e comportamento seguro por padrão.</p>
           </article>
           <article>
-            <span>Meta</span>
-            <strong>1.x</strong>
-            <p>Primeira linha estável, com o comportamento principal maduro.</p>
+            <span>Futuro</span>
+            <strong>Update real</strong>
+            <p>Verificação de releases, changelog, download e aplicação quando o fluxo de release estiver maduro.</p>
           </article>
         </div>
         <div class="update-future-list">
-          <h3>Preparado para receber depois</h3>
+          <h3>Campos reservados para depois</h3>
           <ul>
+            <li>Versão atual e última versão disponível.</li>
+            <li>Status de verificação e canal de release.</li>
             <li>Verificar nova versão manualmente.</li>
             <li>Mostrar changelog antes de atualizar.</li>
             <li>Baixar atualização com confirmação do usuário.</li>
@@ -1677,6 +1792,10 @@ function settingsTab() {
   const ignoredCount = state.settings.ignoredPaths?.length || 0;
   const includedCount = state.settings.includedPaths?.length || 0;
   const activeQuarantine = state.quarantine.filter((item) => item.status === "Em quarentena");
+  const hasCachedScan = hasValidCachedScan();
+  const defaultQuarantine = state.appPaths?.defaultQuarantine || "Pasta de dados do DiskSnoop";
+  const quarantineLocation = state.settings.quarantinePath || defaultQuarantine;
+  const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
   return `
     <section>
       <div class="page-heading">
@@ -1718,7 +1837,7 @@ function settingsTab() {
           <span><strong>${activeQuarantine.length}</strong> itens em quarentena</span>
           <span><strong>${compactBytes(totalQuarantined())}</strong> protegidos</span>
         </div>
-        <p>Local atual: ${escapeHtml(state.settings.quarantinePath || "Pasta de dados do DiskSnoop")}</p>
+        <p>Local atual: ${escapeHtml(quarantineLocation)}</p>
         <div class="detail-actions">
           <button class="secondary" data-action="choose-quarantine">${icon("folder")}Alterar pasta</button>
           <button class="secondary" data-action="open-quarantine">${icon("external")}Abrir quarentena</button>
@@ -1753,6 +1872,7 @@ function settingsTab() {
         </div>
         ${pathList(state.settings.ignoredPaths || [], "ignored")}
         <div class="detail-actions compact-actions">
+          <button class="secondary" data-action="show-ignored" ${ignoredCount ? "" : "disabled"}>${icon("list")}Ver ignorados</button>
           <button class="secondary" data-action="reset-ignored" ${ignoredCount ? "" : "disabled"}>${icon("reset")}Resetar ignorados</button>
         </div>
       </section>
@@ -1762,10 +1882,12 @@ function settingsTab() {
         <div class="settings-stats">
           <span><strong>${state.history.length}</strong> scans no histórico</span>
           <span><strong>${state.scanResult ? "1" : "0"}</strong> scan carregado nesta sessão</span>
+          <span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span>
         </div>
+        <p>Dados do app: ${escapeHtml(dataLocation)}</p>
         <div class="detail-actions">
           <button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button>
-          <button class="secondary" data-action="clear-local-scan">${icon("trash")}Limpar último scan local</button>
+          <button class="secondary" data-action="clear-local-scan" ${hasCachedScan ? "" : "disabled"}>${icon("trash")}Limpar último scan local</button>
           <button class="secondary" data-action="clear-history">${icon("trash")}Limpar histórico</button>
           <button class="outline-danger" data-action="reset-settings">${icon("reset")}Restaurar configurações</button>
         </div>
@@ -1834,10 +1956,11 @@ async function loadBasics() {
     state.settings = loadedSettings;
     api.saveSettings(loadedSettings).catch(() => {});
 
-    const [drives, quarantine, history] = await Promise.all([
+    const [drives, quarantine, history, appPaths] = await Promise.all([
       api.listDrives(),
       api.listQuarantine(),
-      api.listHistory()
+      api.listHistory(),
+      api.appPaths()
     ]);
 
     const elapsed = Date.now() - bootStart;
@@ -1846,6 +1969,8 @@ async function loadBasics() {
     }
 
     state.drives = drives;
+    state.isPackaged = Boolean(appPaths?.isPackaged);
+    state.appPaths = appPaths || null;
     state.quarantine = quarantine;
     syncHiddenPathsFromQuarantine(quarantine);
     state.history = history;
@@ -1877,19 +2002,18 @@ async function loadBasics() {
 }
 
 function restoreLastScan() {
-  try {
-    const cached = JSON.parse(localStorage.getItem(LAST_SCAN_KEY) || "null");
-    if (!cached?.drive || !Array.isArray(cached.candidates)) return;
-    state.scanResult = cached;
-    state.selectedDrive = state.drives.find((drive) => drive.letter === cached.drive.letter) || cached.drive;
-    state.screen = "app";
-    state.tab = "overview";
-    state.selectedItem = null;
-    state.selectedIds.clear();
-    syncHiddenPathsFromQuarantine();
-  } catch {
-    localStorage.removeItem(LAST_SCAN_KEY);
-  }
+  const cached = readCachedScan();
+  if (!cached) return false;
+  state.scanResult = cached;
+  state.selectedDrive = state.drives.find((drive) => drive.letter === cached.drive.letter) || cached.drive;
+  state.screen = "app";
+  state.tab = "overview";
+  state.reportMode = state.history?.[0]?.id === cached.id ? "current" : "review";
+  state.selectedItem = null;
+  state.selectedDuplicateId = "";
+  state.selectedIds.clear();
+  syncHiddenPathsFromQuarantine();
+  return true;
 }
 
 function createTestScan() {
@@ -2093,7 +2217,7 @@ async function quarantineItems(items) {
   let movedCount = 0;
   for (const item of valid) {
     try {
-      await api.moveToQuarantine(item);
+      await api.moveToQuarantine({ ...item, scanId: state.scanResult?.id || "" });
       movedCount += 1;
       state.selectedIds.delete(item.id);
       removeItemFromCurrentResult(item);
@@ -2226,14 +2350,21 @@ document.addEventListener("click", async (event) => {
   if (action === "window-close") await api.closeWindow();
   if (action === "start-scan") await startScan(target.dataset.drive);
   if (action === "load-cached-scan") {
-    restoreLastScan();
+    if (!restoreLastScan()) {
+      setToast("Último scan salvo não está mais disponível.");
+      state.screen = "disks";
+    } else {
+      setToast(isViewingHistoricalReport() ? "Relatório local carregado em modo revisão." : "Último scan local carregado.");
+    }
     render();
   }
   if (action === "load-test-scan") {
+    if (state.isPackaged) return;
     state.scanResult = createTestScan();
     state.selectedDrive = state.scanResult.drive;
     state.screen = "app";
     state.tab = "overview";
+    state.reportMode = "test";
     state.selectedItem = null;
     clearHiddenPaths();
     state.selectedIds.clear();
@@ -2244,6 +2375,7 @@ document.addEventListener("click", async (event) => {
     if (state.screen === "app") {
       state.screen = "disks";
       state.scanResult = null;
+      state.reportMode = "none";
       state.selectedItem = null;
       clearHiddenPaths();
       state.selectedIds.clear();
@@ -2488,13 +2620,29 @@ document.addEventListener("click", async (event) => {
     setToast("Ignorados resetados.");
   }
   if (action === "show-ignored") {
-    setToast((state.settings.ignoredPaths || []).join(" | ") || "Nenhum item ignorado.");
+    const ignored = state.settings.ignoredPaths || [];
+    await confirmModal({
+      title: "Itens ignorados",
+      message: ignored.length
+        ? `Pastas ignoradas neste perfil: ${ignored.join(" | ")}`
+        : "Nenhum item ignorado.",
+      confirmText: "Entendi",
+      icon: "list"
+    });
   }
   if (action === "open-data-folder") {
     const paths = await api.appPaths();
     await openPathWithFeedback(paths.userData);
   }
   if (action === "clear-local-scan") {
+    const ok = await confirmModal({
+      title: "Limpar último scan local",
+      message: "Remove apenas o relatório salvo para abertura rápida. O histórico e os arquivos analisados não serão apagados.",
+      confirmText: "Limpar",
+      icon: "trash",
+      variant: "danger"
+    });
+    if (!ok) return;
     localStorage.removeItem(LAST_SCAN_KEY);
     render();
     setToast("Último scan local limpo.");
@@ -2526,20 +2674,32 @@ document.addEventListener("click", async (event) => {
     setToast("Configurações restauradas.");
   }
   if (action === "load-history-scan") {
-    const snapshot = await api.loadScanSnapshot(id);
-    if (!snapshot) {
-      setToast("Esse scan antigo não tem snapshot salvo.");
-      return;
+    try {
+      const snapshot = await api.loadScanSnapshot(id);
+      if (!snapshot?.id) {
+        await confirmModal({
+          title: "Relatório indisponível",
+          message: "Este registro existe no histórico, mas o snapshot detalhado não foi encontrado nos dados locais do DiskSnoop.",
+          confirmText: "Entendi",
+          icon: "clock"
+        });
+        return;
+      }
+      state.scanResult = snapshot;
+      state.selectedDrive = state.drives.find((drive) => drive.letter === snapshot.drive?.letter) || snapshot.drive || state.selectedDrive;
+      state.screen = "app";
+      state.tab = "overview";
+      state.reportMode = state.history?.[0]?.id === snapshot.id ? "current" : "review";
+      state.selectedItem = null;
+      state.selectedDuplicateId = "";
+      state.selectedIds.clear();
+      syncHiddenPathsFromQuarantine();
+      localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
+      render();
+      setToast(`Relatório de ${fullDate(snapshot.finishedAt)} carregado.`);
+    } catch (error) {
+      setToast(`Não foi possível carregar o relatório: ${cleanIpcError(error)}`);
     }
-    state.scanResult = snapshot;
-    state.selectedDrive = snapshot.drive;
-    state.screen = "app";
-    state.tab = "overview";
-    state.selectedItem = null;
-    state.selectedIds.clear();
-    syncHiddenPathsFromQuarantine();
-    localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
-    setToast("Scan histórico carregado.");
   }
 });
 
@@ -2590,6 +2750,7 @@ api.onScanDone(async (result) => {
   state.selectedDrive = result.drive;
   state.screen = "app";
   state.tab = "overview";
+  state.reportMode = "current";
   state.selectedItem = null;
   clearHiddenPaths();
   state.selectedIds.clear();

@@ -10,6 +10,7 @@ let mainWindow;
 let activeScan = null;
 
 app.commandLine.appendSwitch("disable-features", "AutofillServerCommunication,AutofillEnableAccountWalletStorage");
+app.setName("DiskSnoop");
 app.setAppUserModelId("com.disksnoop.app");
 
 const paths = {
@@ -338,17 +339,34 @@ async function saveScanSnapshot(result) {
   return writeJson("scan-snapshots.json", snapshots.slice(0, 20));
 }
 
+async function findScanSnapshot(id) {
+  const snapshots = await readJson("scan-snapshots.json", []);
+  return snapshots.find((item) => String(item.id) === String(id))
+    || snapshots.find((item) => String(item.result?.id) === String(id))
+    || null;
+}
+
 async function updateLatestHistory(patch) {
   const history = await readJson("history.json", []);
   if (!history.length) return history;
-  history[0] = {
-    ...history[0],
-    ...patch,
-    movedToQuarantine: (history[0].movedToQuarantine || 0) + (patch.movedToQuarantineDelta || 0),
-    permanentlyDeleted: (history[0].permanentlyDeleted || 0) + (patch.permanentlyDeletedDelta || 0)
+  const hasScanId = Object.prototype.hasOwnProperty.call(patch, "scanId");
+  if (hasScanId && !patch.scanId) return history;
+  const targetIndex = hasScanId
+    ? history.findIndex((item) => String(item.id) === String(patch.scanId))
+    : 0;
+  if (targetIndex === -1) return history;
+  const nextPatch = { ...patch };
+  delete nextPatch.scanId;
+  history[targetIndex] = {
+    ...history[targetIndex],
+    ...nextPatch,
+    movedToQuarantine: (history[targetIndex].movedToQuarantine || 0) + (patch.movedToQuarantineDelta || 0),
+    permanentlyDeleted: (history[targetIndex].permanentlyDeleted || 0) + (patch.permanentlyDeletedDelta || 0),
+    restoredFromQuarantine: (history[targetIndex].restoredFromQuarantine || 0) + (patch.restoredFromQuarantineDelta || 0)
   };
-  delete history[0].movedToQuarantineDelta;
-  delete history[0].permanentlyDeletedDelta;
+  delete history[targetIndex].movedToQuarantineDelta;
+  delete history[targetIndex].permanentlyDeletedDelta;
+  delete history[targetIndex].restoredFromQuarantineDelta;
   await writeJson("history.json", history.slice(0, 50));
   return history;
 }
@@ -408,21 +426,31 @@ ipcMain.handle("settings:save", async (_event, nextSettings) => {
   return writeJson("settings.json", settings);
 });
 ipcMain.handle("settings:reset", async () => writeJson("settings.json", defaultSettings));
-ipcMain.handle("history:list", async () => readJson("history.json", []));
+ipcMain.handle("history:list", async () => {
+  const [history, snapshots] = await Promise.all([
+    readJson("history.json", []),
+    readJson("scan-snapshots.json", [])
+  ]);
+  const snapshotIds = new Set(snapshots.flatMap((item) => [String(item.id), String(item.result?.id)].filter(Boolean)));
+  return history.map((item) => ({
+    ...item,
+    snapshotAvailable: snapshotIds.has(String(item.id))
+  }));
+});
 ipcMain.handle("history:clear", async () => {
   await writeJson("history.json", []);
   await writeJson("scan-snapshots.json", []);
   return [];
 });
 ipcMain.handle("scan:snapshot", async (_event, id) => {
-  const snapshots = await readJson("scan-snapshots.json", []);
-  return snapshots.find((item) => item.id === id)?.result || null;
+  const snapshot = await findScanSnapshot(id);
+  return snapshot?.result || null;
 });
 ipcMain.handle("app:paths", async () => {
   const userData = app.getPath("userData");
   const defaultQuarantine = path.join(userData, "Quarantine");
   await fs.mkdir(defaultQuarantine, { recursive: true });
-  return { userData, defaultQuarantine };
+  return { userData, defaultQuarantine, isPackaged: app.isPackaged };
 });
 ipcMain.handle("quarantine:list", async () => syncedQuarantine());
 
@@ -544,11 +572,12 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
       size: item.size || 0,
       movedAt: new Date().toISOString(),
       status: "Em quarentena",
-      type: item.type || "Item"
+      type: item.type || "Item",
+      scanId: item.scanId || ""
     };
     records.unshift(record);
     await saveQuarantine(records);
-    await updateLatestHistory({ movedToQuarantineDelta: record.size });
+    await updateLatestHistory({ scanId: record.scanId, movedToQuarantineDelta: record.size });
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
@@ -576,6 +605,7 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
     record.status = "Restaurado";
     record.restoredAt = new Date().toISOString();
     await saveQuarantine(records);
+    await updateLatestHistory({ scanId: record.scanId, restoredFromQuarantineDelta: record.size || 0 });
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
@@ -595,7 +625,7 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
     record.status = "Excluido permanentemente";
     record.deletedAt = new Date().toISOString();
     await saveQuarantine(records);
-    await updateLatestHistory({ permanentlyDeletedDelta: record.size || 0 });
+    await updateLatestHistory({ scanId: record.scanId, permanentlyDeletedDelta: record.size || 0 });
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
@@ -664,6 +694,7 @@ ipcMain.handle("scan:start", async (_event, options) => {
         freeAfter: freshDrive.free,
         durationMs: new Date(message.result.finishedAt).getTime() - new Date(message.result.startedAt).getTime(),
         movedToQuarantine: 0,
+        restoredFromQuarantine: 0,
         permanentlyDeleted: 0
       });
       await writeJson("history.json", history.slice(0, 50));

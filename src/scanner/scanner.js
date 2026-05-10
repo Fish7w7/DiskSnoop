@@ -26,6 +26,10 @@ const devFolders = new Set(["node_modules", ".venv", "dist", "build", ".next", "
 const installerExtensions = new Set([".exe", ".msi", ".iso"]);
 const archiveExtensions = new Set([".zip", ".rar", ".7z"]);
 const tempExtensions = new Set([".tmp", ".temp", ".bak", ".old"]);
+const MIN_INSTALLER_CANDIDATE_SIZE = 50 * MB;
+const MIN_ARCHIVE_CANDIDATE_SIZE = 50 * MB;
+const MIN_DOWNLOAD_CANDIDATE_SIZE = 10 * MB;
+const MIN_TEMP_CANDIDATE_SIZE = 10 * MB;
 
 const state = {
   files: 0,
@@ -214,7 +218,7 @@ function fileCandidate(filePath, stat) {
     });
   }
 
-  if (config.detectOldInstallers !== false && installerExtensions.has(ext) && isOld(modified)) {
+  if (config.detectOldInstallers !== false && installerExtensions.has(ext) && stat.size >= MIN_INSTALLER_CANDIDATE_SIZE && isOld(modified)) {
     addCandidate({
       name: base,
       path: filePath,
@@ -226,7 +230,7 @@ function fileCandidate(filePath, stat) {
     });
   }
 
-  if (config.detectOldArchives !== false && archiveExtensions.has(ext) && isOld(modified)) {
+  if (config.detectOldArchives !== false && archiveExtensions.has(ext) && stat.size >= MIN_ARCHIVE_CANDIDATE_SIZE && isOld(modified)) {
     addCandidate({
       name: base,
       path: filePath,
@@ -238,7 +242,7 @@ function fileCandidate(filePath, stat) {
     });
   }
 
-  if (config.detectLogsAndTemps !== false && ((ext === ".log" && stat.size >= 100 * MB && isOld(modified)) || tempExtensions.has(ext))) {
+  if (config.detectLogsAndTemps !== false && ((ext === ".log" && stat.size >= 100 * MB && isOld(modified)) || (tempExtensions.has(ext) && stat.size >= MIN_TEMP_CANDIDATE_SIZE))) {
     addCandidate({
       name: base,
       path: filePath,
@@ -250,7 +254,7 @@ function fileCandidate(filePath, stat) {
     });
   }
 
-  if (config.detectOldDownloads !== false && isDownloadsPath(filePath) && isOld(modified)) {
+  if (config.detectOldDownloads !== false && isDownloadsPath(filePath) && stat.size >= MIN_DOWNLOAD_CANDIDATE_SIZE && isOld(modified)) {
     addCandidate({
       name: base,
       path: filePath,
