@@ -1,17 +1,24 @@
 {
   "name": "disksnoop",
-  "version": "0.3.0-beta.1",
+  "version": "1.0.0",
   "description": "Investigador visual de armazenamento para Windows.",
   "main": "src/main/main.js",
   "author": "DiskSnoop contributors",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fish7w7/DiskSnoop.git"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/scanner/scanner.js && node --check src/renderer/renderer.js",
+    "check": "node --check src/main/main.js && node --check src/main/quarantine-safety.js && node --check src/main/preload.js && node --check src/scanner/scanner.js && node --check src/renderer/renderer.js",
+    "test:quarantine": "node --test tests/quarantine-safety.test.js",
+    "test": "npm run test:quarantine",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable"
   },
   "build": {
     "appId": "com.disksnoop.app",
@@ -20,6 +27,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Fish7w7",
+        "repo": "DiskSnoop"
+      }
+    ],
     "files": [
       "src/**/*",
       "package.json"
@@ -28,16 +42,38 @@
       "icon": "src/assets/app-icon.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsis": {
+      "artifactName": "DiskSnoop-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DiskSnoop"
+    },
+    "portable": {
+      "artifactName": "DiskSnoop-Portable-${version}-${arch}.${ext}"
     }
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
-    "electron-builder": "^24.13.3",
-    "electron": "^31.7.7"
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
   }
 }

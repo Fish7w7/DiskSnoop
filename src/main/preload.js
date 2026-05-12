@@ -33,7 +33,18 @@ contextBridge.exposeInMainWorld("diskScope", {
   listHistory: () => ipcRenderer.invoke("history:list"),
   clearHistory: () => ipcRenderer.invoke("history:clear"),
   loadScanSnapshot: (id) => ipcRenderer.invoke("scan:snapshot", id),
+  getUpdateState: () => ipcRenderer.invoke("update:getState"),
+  checkForUpdates: (payload) => ipcRenderer.invoke("update:check", payload),
+  downloadUpdate: () => ipcRenderer.invoke("update:download"),
+  installUpdateAndRestart: () => ipcRenderer.invoke("update:installRestart"),
+  openReleases: () => ipcRenderer.invoke("update:openReleases"),
+  openUpdateRelease: () => ipcRenderer.invoke("update:openRelease"),
+  openDownloadedUpdate: () => unwrapInvoke("update:openDownloaded"),
+  showDownloadedUpdate: () => unwrapInvoke("update:showDownloaded"),
+  ignoreUpdateVersion: () => ipcRenderer.invoke("update:ignoreVersion"),
+  rememberUpdateLater: () => ipcRenderer.invoke("update:rememberLater"),
   onScanProgress: (callback) => ipcRenderer.on("scan:progress", (_event, payload) => callback(payload)),
   onScanDone: (callback) => ipcRenderer.on("scan:done", (_event, payload) => callback(payload)),
-  onScanError: (callback) => ipcRenderer.on("scan:error", (_event, payload) => callback(payload))
+  onScanError: (callback) => ipcRenderer.on("scan:error", (_event, payload) => callback(payload)),
+  onUpdateState: (callback) => ipcRenderer.on("update:state", (_event, payload) => callback(payload))
 });

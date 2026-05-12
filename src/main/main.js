@@ -3,11 +3,31 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
 const crypto = require("node:crypto");
+const https = require("node:https");
 const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
+const {
+  assertCanCrossVolumeMove,
+  assertNotInternalPath: assertNotInternalQuarantinePath,
+  assertTrustedQuarantineRecord,
+  isSensitiveWindowsPath,
+  quarantineFolderName,
+  quarantineRecordRoot,
+  sameOrInsidePath
+} = require("./quarantine-safety");
+
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch {
+  autoUpdater = null;
+}
 
 let mainWindow;
 let activeScan = null;
+let protectedActionCount = 0;
+let updateDownload = null;
+let autoUpdaterConfigured = false;
 
 app.commandLine.appendSwitch("disable-features", "AutofillServerCommunication,AutofillEnableAccountWalletStorage");
 app.setName("DiskSnoop");
@@ -28,6 +48,7 @@ const defaultSettings = {
   largeFileSize: 1024 * 1024 * 1024,
   largeFolderSize: 2 * 1024 * 1024 * 1024,
   duplicateFileSize: 50 * 1024 * 1024,
+  verifyDuplicateHashes: true,
   oldFileDays: 90,
   detectNodeModules: true,
   detectBuildCaches: true,
@@ -35,10 +56,24 @@ const defaultSettings = {
   detectOldDownloads: true,
   detectOldArchives: true,
   detectLogsAndTemps: true,
-  suggestDForC: true,
   ignoredPaths: [],
   includedPaths: [],
-  quarantinePath: ""
+  quarantinePath: "",
+  update: {
+    checkOnStartup: true,
+    autoDownload: false,
+    includeBeta: false,
+    preferManual: false,
+    ignoredVersion: "",
+    remindAfter: ""
+  }
+};
+
+const updateConfig = {
+  owner: "Fish7w7",
+  repo: "DiskSnoop",
+  releasesApi: "https://api.github.com/repos/Fish7w7/DiskSnoop/releases",
+  releasesPage: "https://github.com/Fish7w7/DiskSnoop/releases"
 };
 
 async function readJson(fileName, fallback) {
@@ -57,7 +92,17 @@ async function writeJson(fileName, value) {
 }
 
 async function getSettings() {
-  return { ...defaultSettings, ...(await readJson("settings.json", {})) };
+  const saved = await readJson("settings.json", {});
+  return {
+    ...defaultSettings,
+    ...saved,
+    ignoredPaths: Array.isArray(saved.ignoredPaths) ? saved.ignoredPaths : defaultSettings.ignoredPaths,
+    includedPaths: Array.isArray(saved.includedPaths) ? saved.includedPaths : defaultSettings.includedPaths,
+    update: {
+      ...defaultSettings.update,
+      ...(saved.update || {})
+    }
+  };
 }
 
 function runPowerShell(script) {
@@ -160,17 +205,58 @@ function friendlyFsError(error) {
   return error;
 }
 
-async function copyThenRemove(source, target) {
+function assertNotInternalPath(sourcePath, quarantineRoot) {
+  const userData = app.getPath("userData");
+  const defaultQuarantine = normalizeQuarantineRoot("");
+  assertNotInternalQuarantinePath(sourcePath, { userData, defaultQuarantine, quarantineRoot });
+}
+
+async function validateQuarantineSource(item, quarantineRoot) {
+  const sourcePath = item?.path;
+  if (!sourcePath) throw new Error("Caminho ausente para mover para quarentena.");
+  if (isSensitiveWindowsPath(sourcePath)) {
+    throw new Error("Este caminho parece sensivel para o Windows ou para aplicativos instalados. O DiskSnoop nao move esse tipo de item para quarentena.");
+  }
+  assertNotInternalPath(sourcePath, quarantineRoot);
+
+  let stat;
   try {
-    const stat = await fs.lstat(source);
-    if (stat.isDirectory()) {
-      await fs.cp(source, target, { recursive: true, errorOnExist: false, force: false });
-      await fs.rm(source, { recursive: true, force: true });
-      return;
+    stat = await fs.lstat(sourcePath);
+  } catch {
+    throw new Error("O item nao existe mais no caminho original.");
+  }
+  if (stat.isSymbolicLink()) {
+    throw new Error("Links simbolicos, junctions e pontos de reparse nao sao movidos para quarentena. Abra o local e revise manualmente.");
+  }
+  if (!stat.isFile() && !stat.isDirectory()) {
+    throw new Error("Este tipo de item nao pode ser movido para quarentena com seguranca.");
+  }
+  return stat;
+}
+
+async function assertSafeQuarantineRecord(record) {
+  if (!record?.quarantinePath) throw new Error("Registro de quarentena sem caminho interno.");
+  const settings = await getSettings();
+  const trustedRoots = [
+    normalizeQuarantineRoot(settings.quarantinePath),
+    normalizeQuarantineRoot(""),
+    record.quarantineRoot
+  ].filter(Boolean);
+  assertTrustedQuarantineRecord(record, trustedRoots);
+}
+
+async function copyFileThenRemove(source, target, sourceStat) {
+  const tempTarget = `${target}.partial-${Date.now()}`;
+  try {
+    await fs.copyFile(source, tempTarget, fscb.constants.COPYFILE_EXCL);
+    const copiedStat = await fs.lstat(tempTarget);
+    if (!copiedStat.isFile() || copiedStat.size !== sourceStat.size) {
+      throw new Error("A copia de seguranca nao bate com o arquivo original. Nada foi removido.");
     }
-    await fs.copyFile(source, target, fscb.constants.COPYFILE_EXCL);
+    await fs.rename(tempTarget, target);
     await fs.rm(source, { force: true });
   } catch (error) {
+    await fs.rm(tempTarget, { recursive: true, force: true }).catch(() => {});
     await fs.rm(target, { recursive: true, force: true }).catch(() => {});
     throw friendlyFsError(error);
   }
@@ -183,7 +269,9 @@ async function movePath(source, target) {
   } catch (error) {
     try {
       if (error.code !== "EXDEV") throw friendlyFsError(error);
-      await copyThenRemove(source, target);
+      const sourceStat = await fs.lstat(source);
+      assertCanCrossVolumeMove(sourceStat);
+      await copyFileThenRemove(source, target, sourceStat);
     } catch (moveError) {
       await fs.rm(target, { recursive: true, force: true }).catch(() => {});
       throw moveError;
@@ -211,7 +299,8 @@ async function quarantineRoots(records = []) {
     normalizeQuarantineRoot("")
   ]);
   for (const record of records) {
-    if (record.quarantinePath) roots.add(path.dirname(record.quarantinePath));
+    const recordRoot = quarantineRecordRoot(record);
+    if (recordRoot) roots.add(recordRoot);
   }
   return [...roots];
 }
@@ -266,6 +355,13 @@ async function syncedQuarantine() {
   const knownPaths = new Set(records.map((record) => path.normalize(record.quarantinePath || "").toLowerCase()).filter(Boolean));
 
   for (const record of records) {
+    if (record.quarantinePath && !record.quarantineRoot) {
+      const root = path.dirname(record.quarantinePath);
+      if (quarantineFolderName(root)) {
+        record.quarantineRoot = root;
+        changed = true;
+      }
+    }
     const existsInQuarantine = record.quarantinePath && fscb.existsSync(record.quarantinePath);
     if (existsInQuarantine && record.status !== "Em quarentena") {
       record.status = "Em quarentena";
@@ -375,6 +471,487 @@ function safeName(name) {
   return String(name || "item").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 80);
 }
 
+function versionFromText(value) {
+  const match = String(value || "").match(/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/);
+  return match ? match[1] : "";
+}
+
+function parseVersion(value) {
+  const clean = versionFromText(value);
+  if (!clean) return null;
+  const [core, prerelease = ""] = clean.split("-");
+  const [major = 0, minor = 0, patch = 0] = core.split(".").map((part) => Number(part) || 0);
+  return { major, minor, patch, prerelease, raw: clean };
+}
+
+function comparePrerelease(left, right) {
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+  const leftParts = left.split(".");
+  const rightParts = right.split(".");
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const a = leftParts[index] || "";
+    const b = rightParts[index] || "";
+    if (a === b) continue;
+    const aNumber = /^\d+$/.test(a) ? Number(a) : NaN;
+    const bNumber = /^\d+$/.test(b) ? Number(b) : NaN;
+    if (Number.isFinite(aNumber) && Number.isFinite(bNumber)) return Math.sign(aNumber - bNumber);
+    if (Number.isFinite(aNumber)) return -1;
+    if (Number.isFinite(bNumber)) return 1;
+    return a.localeCompare(b);
+  }
+  return 0;
+}
+
+function compareVersions(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  if (!a || !b) return 0;
+  for (const key of ["major", "minor", "patch"]) {
+    if (a[key] !== b[key]) return Math.sign(a[key] - b[key]);
+  }
+  return comparePrerelease(a.prerelease, b.prerelease);
+}
+
+function appChannel(settings) {
+  return settings?.update?.includeBeta || parseVersion(app.getVersion())?.prerelease ? "Beta" : "Estável";
+}
+
+function appBuildMode() {
+  if (!app.isPackaged) return "Desenvolvimento";
+  if (process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR) return "Portable";
+  return "Instalado";
+}
+
+function canUseAutoUpdater(settings) {
+  return Boolean(autoUpdater && appBuildMode() === "Instalado" && !settings?.update?.preferManual);
+}
+
+function isNetworkError(error) {
+  return ["ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH"].includes(error?.code);
+}
+
+function updateStateBase(settings) {
+  return {
+    status: "idle",
+    currentVersion: app.getVersion(),
+    latestVersion: "",
+    lastCheckAt: "",
+    channel: appChannel(settings),
+    buildMode: appBuildMode(),
+    updateMode: canUseAutoUpdater(settings) ? "auto" : "assisted",
+    autoUpdaterAvailable: Boolean(autoUpdater),
+    releasesPage: updateConfig.releasesPage,
+    release: null,
+    asset: null,
+    downloaded: null,
+    progress: 0,
+    error: "",
+    ignoredVersion: settings?.update?.ignoredVersion || "",
+    remindAfter: settings?.update?.remindAfter || ""
+  };
+}
+
+async function getUpdateState() {
+  const settings = await getSettings();
+  const saved = await readJson("update-state.json", {});
+  const next = {
+    ...updateStateBase(settings),
+    ...saved,
+    currentVersion: app.getVersion(),
+    channel: appChannel(settings),
+    buildMode: appBuildMode(),
+    updateMode: canUseAutoUpdater(settings) ? "auto" : "assisted",
+    autoUpdaterAvailable: Boolean(autoUpdater),
+    releasesPage: updateConfig.releasesPage,
+    ignoredVersion: settings.update.ignoredVersion || saved.ignoredVersion || "",
+    remindAfter: settings.update.remindAfter || saved.remindAfter || ""
+  };
+  const staleUpdateStatus = ["available", "downloaded", "restart-required", "ignored"].includes(next.status);
+  if (next.latestVersion && staleUpdateStatus && compareVersions(next.latestVersion, app.getVersion()) <= 0) {
+    return {
+      ...next,
+      status: "up-to-date",
+      latestVersion: app.getVersion(),
+      release: null,
+      asset: null,
+      downloaded: null,
+      progress: 0,
+      error: "",
+      hiddenUntilReminder: false
+    };
+  }
+  return next;
+}
+
+async function saveUpdateState(patch) {
+  const next = { ...(await getUpdateState()), ...patch };
+  await writeJson("update-state.json", next);
+  send("update:state", next);
+  return next;
+}
+
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      headers: {
+        "User-Agent": "DiskSnoop",
+        "Accept": "application/vnd.github+json"
+      },
+      timeout: 15000
+    }, (response) => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        response.resume();
+        requestJson(response.headers.location).then(resolve, reject);
+        return;
+      }
+      let raw = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { raw += chunk; });
+      response.on("end", () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`GitHub respondeu com status ${response.statusCode}.`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(raw));
+        } catch {
+          reject(new Error("A resposta de releases veio em formato invalido."));
+        }
+      });
+    });
+    request.on("timeout", () => request.destroy(Object.assign(new Error("Tempo esgotado ao verificar atualizacao."), { code: "ETIMEDOUT" })));
+    request.on("error", reject);
+  });
+}
+
+function selectWindowsAsset(release) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  const scored = assets
+    .filter((asset) => asset?.browser_download_url && asset?.name)
+    .map((asset) => {
+      const name = String(asset.name).toLowerCase();
+      let score = 0;
+      if (name.endsWith(".exe")) score += 80;
+      if (name.endsWith(".msi")) score += 70;
+      if (name.endsWith(".zip")) score += 35;
+      if (name.includes("disksnoop")) score += 20;
+      if (name.includes("win") || name.includes("windows")) score += 15;
+      if (name.includes("x64") || name.includes("amd64")) score += 15;
+      if (name.includes("blockmap") || name.includes("latest")) score -= 100;
+      return { asset, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.asset || null;
+}
+
+function normalizeRelease(release) {
+  const version = versionFromText(release?.tag_name || release?.name);
+  return {
+    id: release?.id || "",
+    version,
+    tag: release?.tag_name || version,
+    name: release?.name || release?.tag_name || version,
+    url: release?.html_url || updateConfig.releasesPage,
+    publishedAt: release?.published_at || "",
+    prerelease: Boolean(release?.prerelease),
+    body: release?.body || "",
+    asset: selectWindowsAsset(release)
+  };
+}
+
+function normalizeReleaseNotes(notes) {
+  if (!notes) return "";
+  if (typeof notes === "string") return notes;
+  if (Array.isArray(notes)) {
+    return notes.map((item) => {
+      if (typeof item === "string") return item;
+      return item.note || item.notes || item.body || "";
+    }).filter(Boolean).join("\n");
+  }
+  return notes.note || notes.notes || notes.body || "";
+}
+
+function installedUpdaterRelease(info = {}) {
+  const version = versionFromText(info.version || info.tag || info.releaseName);
+  return {
+    id: version || info.releaseName || "",
+    version,
+    tag: info.tag || (version ? `v${version}` : ""),
+    name: info.releaseName || (version ? `DiskSnoop ${version}` : "Nova versão"),
+    url: updateConfig.releasesPage,
+    publishedAt: info.releaseDate || "",
+    prerelease: Boolean(parseVersion(version)?.prerelease),
+    body: normalizeReleaseNotes(info.releaseNotes),
+    asset: null
+  };
+}
+
+function configureAutoUpdater(settings) {
+  if (!autoUpdater || autoUpdaterConfigured) return;
+  autoUpdaterConfigured = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = Boolean(settings?.update?.includeBeta);
+  autoUpdater.allowDowngrade = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    saveUpdateState({ status: "checking", progress: 0, error: "", lastCheckAt: new Date().toISOString() }).catch(() => {});
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    const release = installedUpdaterRelease(info);
+    saveUpdateState({
+      status: "available",
+      latestVersion: release.version || info.version || "",
+      release,
+      asset: null,
+      downloaded: null,
+      progress: 0,
+      error: "",
+      hiddenUntilReminder: false,
+      lastCheckAt: new Date().toISOString()
+    }).catch(() => {});
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    saveUpdateState({
+      status: "up-to-date",
+      latestVersion: app.getVersion(),
+      release: null,
+      asset: null,
+      downloaded: null,
+      progress: 0,
+      error: "",
+      hiddenUntilReminder: false,
+      lastCheckAt: new Date().toISOString()
+    }).catch(() => {});
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    saveUpdateState({
+      status: "downloading",
+      progress: Math.max(0, Math.min(99, Math.round(progress.percent || 0))),
+      error: ""
+    }).catch(() => {});
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    const release = installedUpdaterRelease(info);
+    saveUpdateState({
+      status: "restart-required",
+      latestVersion: release.version || info.version || "",
+      release,
+      progress: 100,
+      downloaded: {
+        name: release.name,
+        downloadedAt: new Date().toISOString()
+      },
+      error: ""
+    }).catch(() => {});
+  });
+
+  autoUpdater.on("error", (error) => {
+    saveUpdateState({
+      status: isNetworkError(error) ? "offline" : "error",
+      progress: 0,
+      error: error?.message || "Nao foi possivel atualizar pelo instalador.",
+      hiddenUntilReminder: false,
+      lastCheckAt: new Date().toISOString()
+    }).catch(() => {});
+  });
+}
+
+async function checkInstalledUpdater(settings) {
+  if (!autoUpdater) throw new Error("electron-updater nao esta instalado neste build.");
+  configureAutoUpdater(settings);
+  autoUpdater.allowPrerelease = Boolean(settings.update.includeBeta);
+  autoUpdater.autoDownload = false;
+  await saveUpdateState({ status: "checking", progress: 0, error: "", lastCheckAt: new Date().toISOString() });
+  try {
+    await autoUpdater.checkForUpdates();
+    return getUpdateState();
+  } catch (error) {
+    return saveUpdateState({
+      status: isNetworkError(error) ? "offline" : "error",
+      progress: 0,
+      error: error?.message || "Nao foi possivel verificar atualizacao pelo instalador.",
+      hiddenUntilReminder: false,
+      lastCheckAt: new Date().toISOString()
+    });
+  }
+}
+
+function chooseLatestRelease(releases, settings) {
+  const current = app.getVersion();
+  return releases
+    .filter((release) => !release.draft)
+    .filter((release) => settings.update.includeBeta || !release.prerelease)
+    .map(normalizeRelease)
+    .filter((release) => release.version && compareVersions(release.version, current) > 0)
+    .sort((a, b) => compareVersions(b.version, a.version) || new Date(b.publishedAt) - new Date(a.publishedAt))[0] || null;
+}
+
+async function checkForUpdates({ manual = false } = {}) {
+  const settings = await getSettings();
+  if (canUseAutoUpdater(settings)) return checkInstalledUpdater(settings);
+  await saveUpdateState({ status: "checking", progress: 0, error: "", lastCheckAt: new Date().toISOString() });
+  try {
+    const releases = await requestJson(updateConfig.releasesApi);
+    if (!Array.isArray(releases)) throw new Error("A resposta de releases veio em formato invalido.");
+    const latest = chooseLatestRelease(releases, settings);
+    if (!latest) {
+      return saveUpdateState({
+        status: "up-to-date",
+        latestVersion: app.getVersion(),
+        release: null,
+        asset: null,
+        downloaded: null,
+        progress: 0,
+        error: "",
+        hiddenUntilReminder: false,
+        lastCheckAt: new Date().toISOString()
+      });
+    }
+
+    const ignored = settings.update.ignoredVersion && settings.update.ignoredVersion === latest.version;
+    const reminded = settings.update.remindAfter && new Date(settings.update.remindAfter).getTime() > Date.now() && !manual;
+    return saveUpdateState({
+      status: ignored ? "ignored" : "available",
+      latestVersion: latest.version,
+      release: latest,
+      asset: latest.asset ? {
+        name: latest.asset.name,
+        size: latest.asset.size || 0,
+        url: latest.asset.browser_download_url
+      } : null,
+      downloaded: null,
+      progress: 0,
+      error: "",
+      ignoredVersion: settings.update.ignoredVersion || "",
+      remindAfter: settings.update.remindAfter || "",
+      hiddenUntilReminder: reminded,
+      lastCheckAt: new Date().toISOString()
+    });
+  } catch (error) {
+    return saveUpdateState({
+      status: isNetworkError(error) ? "offline" : "error",
+      progress: 0,
+      error: isNetworkError(error)
+        ? "Sem conexao com a internet ou GitHub indisponivel no momento."
+        : (error.message || "Nao foi possivel verificar atualizacao."),
+      hiddenUntilReminder: false,
+      lastCheckAt: new Date().toISOString()
+    });
+  }
+}
+
+function downloadFile(url, destination) {
+  return new Promise((resolve, reject) => {
+    const start = (targetUrl) => {
+      const request = https.get(targetUrl, { headers: { "User-Agent": "DiskSnoop" }, timeout: 30000 }, (response) => {
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          response.resume();
+          start(response.headers.location);
+          return;
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`Download respondeu com status ${response.statusCode}.`));
+          return;
+        }
+        const total = Number(response.headers["content-length"] || 0);
+        let received = 0;
+        let lastProgress = 0;
+        const stream = fscb.createWriteStream(destination);
+        response.on("data", (chunk) => {
+          received += chunk.length;
+          if (total) {
+            const progress = Math.max(1, Math.min(99, Math.round((received / total) * 100)));
+            if (progress >= lastProgress + 2 || progress >= 99) {
+              lastProgress = progress;
+              saveUpdateState({ status: "downloading", progress }).catch(() => {});
+            }
+          }
+        });
+        response.pipe(stream);
+        stream.on("finish", () => stream.close(resolve));
+        stream.on("error", reject);
+      });
+      updateDownload = request;
+      request.on("timeout", () => request.destroy(Object.assign(new Error("Tempo esgotado durante o download."), { code: "ETIMEDOUT" })));
+      request.on("error", reject);
+    };
+    start(url);
+  });
+}
+
+async function downloadUpdate() {
+  if (activeScan) throw new Error("Finalize ou cancele o scan antes de baixar uma atualizacao.");
+  if (protectedActionCount > 0) throw new Error("Aguarde a acao de quarentena terminar antes de baixar uma atualizacao.");
+  const settings = await getSettings();
+  if (canUseAutoUpdater(settings)) {
+    configureAutoUpdater(settings);
+    await saveUpdateState({ status: "downloading", progress: 0, error: "" });
+    try {
+      await autoUpdater.downloadUpdate();
+      return getUpdateState();
+    } catch (error) {
+      return saveUpdateState({
+        status: isNetworkError(error) ? "offline" : "error",
+        progress: 0,
+        error: error?.message || "O download pelo instalador foi interrompido."
+      });
+    }
+  }
+  const state = await getUpdateState();
+  const asset = state.asset;
+  if (!asset?.url) throw new Error("Esta release nao tem artefato de Windows disponivel. Abra a pagina de releases para baixar manualmente.");
+  const updatesDir = path.join(app.getPath("userData"), "Updates");
+  await fs.mkdir(updatesDir, { recursive: true });
+  const fileName = `${state.latestVersion || "update"}-${safeName(asset.name)}`;
+  const destination = path.join(updatesDir, fileName);
+  const tempDestination = `${destination}.download`;
+  await fs.rm(tempDestination, { force: true }).catch(() => {});
+  await saveUpdateState({ status: "downloading", progress: 0, downloaded: null, error: "" });
+  try {
+    await downloadFile(asset.url, tempDestination);
+    await fs.rename(tempDestination, destination);
+    return saveUpdateState({
+      status: "downloaded",
+      progress: 100,
+      downloaded: {
+        path: destination,
+        name: fileName,
+        downloadedAt: new Date().toISOString()
+      },
+      error: ""
+    });
+  } catch (error) {
+    await fs.rm(tempDestination, { force: true }).catch(() => {});
+    return saveUpdateState({
+      status: isNetworkError(error) ? "offline" : "error",
+      progress: 0,
+      error: error.message || "O download foi interrompido."
+    });
+  } finally {
+    updateDownload = null;
+  }
+}
+
+async function installDownloadedUpdate() {
+  const settings = await getSettings();
+  if (!canUseAutoUpdater(settings)) throw new Error("Reinicio automatico esta disponivel apenas no canal instalado.");
+  if (activeScan) throw new Error("Finalize ou cancele o scan antes de reiniciar para atualizar.");
+  if (protectedActionCount > 0) throw new Error("Aguarde a acao de quarentena terminar antes de reiniciar para atualizar.");
+  const updateState = await getUpdateState();
+  if (updateState.status !== "restart-required") throw new Error("Nenhuma atualizacao baixada esta pronta para instalar.");
+  autoUpdater.quitAndInstall(false, true);
+  return { ok: true };
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -422,7 +999,15 @@ ipcMain.handle("window:maximizeToggle", async () => {
 ipcMain.handle("window:close", async () => mainWindow?.close());
 ipcMain.handle("settings:get", async () => getSettings());
 ipcMain.handle("settings:save", async (_event, nextSettings) => {
-  const settings = { ...(await getSettings()), ...nextSettings };
+  const current = await getSettings();
+  const settings = {
+    ...current,
+    ...nextSettings,
+    update: {
+      ...current.update,
+      ...(nextSettings?.update || {})
+    }
+  };
   return writeJson("settings.json", settings);
 });
 ipcMain.handle("settings:reset", async () => writeJson("settings.json", defaultSettings));
@@ -450,7 +1035,57 @@ ipcMain.handle("app:paths", async () => {
   const userData = app.getPath("userData");
   const defaultQuarantine = path.join(userData, "Quarantine");
   await fs.mkdir(defaultQuarantine, { recursive: true });
-  return { userData, defaultQuarantine, isPackaged: app.isPackaged };
+  return {
+    userData,
+    defaultQuarantine,
+    isPackaged: app.isPackaged,
+    version: app.getVersion(),
+    channel: parseVersion(app.getVersion())?.prerelease ? "Beta" : "Estável",
+    buildMode: appBuildMode()
+  };
+});
+ipcMain.handle("update:getState", async () => getUpdateState());
+ipcMain.handle("update:check", async (_event, payload = {}) => checkForUpdates({ manual: Boolean(payload.manual) }));
+ipcMain.handle("update:download", async () => downloadUpdate());
+ipcMain.handle("update:installRestart", async () => installDownloadedUpdate());
+ipcMain.handle("update:openReleases", async () => {
+  await shell.openExternal(updateConfig.releasesPage);
+  return { ok: true };
+});
+ipcMain.handle("update:openRelease", async () => {
+  const updateState = await getUpdateState();
+  await shell.openExternal(updateState.release?.url || updateConfig.releasesPage);
+  return { ok: true };
+});
+ipcMain.handle("update:openDownloaded", async () => {
+  const updateState = await getUpdateState();
+  if (!updateState.downloaded?.path || !fscb.existsSync(updateState.downloaded.path)) {
+    throw new Error("Arquivo baixado nao encontrado.");
+  }
+  const result = await shell.openPath(updateState.downloaded.path);
+  return result ? { ok: false, error: result } : { ok: true };
+});
+ipcMain.handle("update:showDownloaded", async () => {
+  const updateState = await getUpdateState();
+  if (!updateState.downloaded?.path || !fscb.existsSync(updateState.downloaded.path)) {
+    throw new Error("Arquivo baixado nao encontrado.");
+  }
+  shell.showItemInFolder(updateState.downloaded.path);
+  return { ok: true };
+});
+ipcMain.handle("update:ignoreVersion", async () => {
+  const updateState = await getUpdateState();
+  if (!updateState.latestVersion) throw new Error("Nenhuma versao disponivel para ignorar.");
+  const settings = await getSettings();
+  settings.update.ignoredVersion = updateState.latestVersion;
+  await writeJson("settings.json", settings);
+  return saveUpdateState({ status: "ignored", ignoredVersion: updateState.latestVersion, hiddenUntilReminder: false });
+});
+ipcMain.handle("update:rememberLater", async () => {
+  const settings = await getSettings();
+  settings.update.remindAfter = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  await writeJson("settings.json", settings);
+  return saveUpdateState({ remindAfter: settings.update.remindAfter, hiddenUntilReminder: true });
 });
 ipcMain.handle("quarantine:list", async () => syncedQuarantine());
 
@@ -557,9 +1192,11 @@ ipcMain.handle("ignore:add", async (_event, itemPath) => {
 });
 
 ipcMain.handle("quarantine:move", async (_event, item) => {
+  protectedActionCount += 1;
   try {
     const settings = await getSettings();
     const quarantineRoot = normalizeQuarantineRoot(settings.quarantinePath);
+    const sourceStat = await validateQuarantineSource(item, quarantineRoot);
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const target = path.join(quarantineRoot, `${id}-${safeName(path.basename(item.path))}`);
     await movePath(item.path, target);
@@ -569,10 +1206,11 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
       name: item.name || path.basename(item.path),
       originalPath: item.path,
       quarantinePath: target,
-      size: item.size || 0,
+      quarantineRoot,
+      size: item.size || sourceStat.size || 0,
       movedAt: new Date().toISOString(),
       status: "Em quarentena",
-      type: item.type || "Item",
+      type: item.type || (sourceStat.isDirectory() ? "Pasta" : "Arquivo"),
       scanId: item.scanId || ""
     };
     records.unshift(record);
@@ -581,21 +1219,33 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
+  } finally {
+    protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
 });
 
 ipcMain.handle("quarantine:restore", async (_event, id) => {
+  protectedActionCount += 1;
   try {
     const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
     if (!record) throw new Error("Item de quarentena nao encontrado.");
     if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para restauracao.");
     if (!record.originalPath) throw new Error("Este item nao tem origem registrada. Abra a quarentena e restaure manualmente.");
+    await assertSafeQuarantineRecord(record);
+    assertNotInternalPath(record.originalPath, path.dirname(record.quarantinePath));
+    if (isSensitiveWindowsPath(record.originalPath)) {
+      throw new Error("O caminho original fica em area sensivel. Por seguranca, restaure manualmente pelo Explorer.");
+    }
     if (!fscb.existsSync(record.quarantinePath)) {
       record.status = "Arquivo ausente";
       record.missingAt = new Date().toISOString();
       await saveQuarantine(records);
       throw new Error("O arquivo nao existe mais na pasta de quarentena. O registro foi marcado como ausente.");
+    }
+    const quarantineStat = await fs.lstat(record.quarantinePath);
+    if (quarantineStat.isSymbolicLink()) {
+      throw new Error("O item em quarentena virou um link simbolico ou ponto de reparse. Operacao bloqueada por seguranca.");
     }
     if (fscb.existsSync(record.originalPath)) {
       throw new Error("O caminho original ja existe. Restauracao manual recomendada.");
@@ -609,15 +1259,29 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
+  } finally {
+    protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
 });
 
 ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
+  protectedActionCount += 1;
   try {
     const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
     if (!record) throw new Error("Item de quarentena nao encontrado.");
     if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para exclusao permanente.");
+    await assertSafeQuarantineRecord(record);
+    if (!fscb.existsSync(record.quarantinePath)) {
+      record.status = "Arquivo ausente";
+      record.missingAt = new Date().toISOString();
+      await saveQuarantine(records);
+      throw new Error("O arquivo nao existe mais na pasta de quarentena. O registro foi marcado como ausente.");
+    }
+    const quarantineStat = await fs.lstat(record.quarantinePath);
+    if (quarantineStat.isSymbolicLink()) {
+      throw new Error("O item em quarentena virou um link simbolico ou ponto de reparse. Abra a pasta e revise manualmente.");
+    }
     await fs.rm(record.quarantinePath, { recursive: true, force: true });
     if (fscb.existsSync(record.quarantinePath)) {
       throw new Error("O Windows nao confirmou a exclusao do item. Abra a quarentena e revise manualmente.");
@@ -629,6 +1293,8 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
     return ipcOk(record);
   } catch (error) {
     return ipcError(error);
+  } finally {
+    protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
 });
 

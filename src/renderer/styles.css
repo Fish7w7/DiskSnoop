@@ -643,6 +643,19 @@ h3 {
   color: var(--accent);
 }
 
+.nav-badge {
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  padding: 2px 7px;
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .sidebar-info {
   display: grid;
   grid-template-columns: 1fr 42px;
@@ -1755,6 +1768,20 @@ input[type="checkbox"] {
   margin-top: 18px;
 }
 
+.hash-line {
+  overflow: hidden;
+  margin: 14px 0 0;
+  color: var(--textMuted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hash-line code {
+  color: var(--textPrimary);
+  font-family: Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
 .duplicate-copy-row {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr) 90px 72px;
@@ -1829,14 +1856,6 @@ input[type="checkbox"] {
   margin-right: 12px;
 }
 
-.update-placeholder {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 22px;
-  align-items: start;
-  padding: 24px;
-}
-
 .update-hero-icon {
   width: 72px;
   height: 72px;
@@ -1850,34 +1869,6 @@ input[type="checkbox"] {
 .update-hero-icon .icon {
   width: 34px;
   height: 34px;
-}
-
-.update-copy {
-  min-width: 0;
-}
-
-.update-copy h2 {
-  margin: 8px 0 8px;
-  font-size: 22px;
-}
-
-.update-copy p {
-  max-width: 720px;
-  color: var(--textMuted);
-  line-height: 1.55;
-}
-
-.beta-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  padding: 0 12px;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .update-status-grid {
@@ -1907,49 +1898,174 @@ input[type="checkbox"] {
   font-size: 14px;
 }
 
-.update-future-list {
-  grid-column: 1 / -1;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  padding: 16px 18px;
+.update-heading {
+  display: flex;
+  gap: 16px;
+  align-items: center;
 }
 
-.release-roadmap {
-  grid-column: 1 / -1;
+.page-heading-icon {
+  width: 46px;
+  height: 46px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--accentSoft);
+  color: var(--accent);
 }
 
-.release-roadmap article {
+.update-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.update-card {
+  padding: 22px 24px;
+}
+
+.update-card h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.update-card p {
+  margin: 0;
+  color: var(--textMuted);
+  line-height: 1.55;
+}
+
+.update-card-title {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.update-card-title .update-hero-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+}
+
+.update-card-title .update-hero-icon .icon {
+  width: 27px;
+  height: 27px;
+}
+
+.update-card-title h2 {
+  margin-top: 10px;
+  font-size: 22px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 86%, var(--background));
-  padding: 14px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.release-roadmap span {
+.status-pill.success {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.status-pill.warning {
+  border-color: color-mix(in srgb, var(--warning) 48%, var(--border));
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+
+.status-pill.info {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.status-pill.danger {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.status-pill.neutral {
+  color: var(--textMuted);
+}
+
+.update-status-card .update-status-grid {
+  margin-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.update-actions {
+  margin-top: 18px;
+}
+
+.update-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.update-progress span {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.update-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.update-diagnostics-grid div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--background));
+  padding: 12px 14px;
+}
+
+.update-diagnostics-grid span {
   display: block;
   color: var(--textMuted);
   font-size: 12px;
 }
 
-.release-roadmap strong {
+.update-diagnostics-grid strong {
   display: block;
-  margin: 6px 0;
+  overflow: hidden;
+  margin-top: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.release-roadmap p {
-  color: var(--textMuted);
-  font-size: 13px;
-  line-height: 1.45;
+.update-changelog {
+  display: grid;
+  gap: 14px;
 }
 
-.update-future-list h3 {
-  margin-bottom: 10px;
+.update-changelog section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--background));
+  padding: 14px 16px;
 }
 
-.update-future-list ul {
+.update-changelog h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.update-changelog ul {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -1957,9 +2073,25 @@ input[type="checkbox"] {
   color: var(--textMuted);
 }
 
-.update-placeholder .detail-actions {
-  grid-column: 1 / -1;
-  margin-top: 0;
+.update-preferences {
+  display: grid;
+  gap: 12px;
+}
+
+.update-preferences label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--textPrimary);
+}
+
+.update-preferences label.disabled {
+  color: var(--textMuted);
+}
+
+.update-preferences span {
+  color: var(--textMuted);
+  font-size: 12px;
 }
 
 .settings-card {
@@ -2908,9 +3040,8 @@ input[type="checkbox"] {
   .report-grid,
   .history-summary-cards,
   .history-scan-card,
-  .update-placeholder,
   .update-status-grid,
-  .release-roadmap,
+  .update-diagnostics-grid,
   .quick-actions,
   .folders-filters,
   .files-filters,
@@ -2938,10 +3069,6 @@ input[type="checkbox"] {
     border-left: 0;
     border-top: 1px solid var(--border);
     padding: 14px 0 0;
-  }
-
-  .update-placeholder > * {
-    grid-column: 1;
   }
 
   .duplicate-copy-row {

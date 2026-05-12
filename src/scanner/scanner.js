@@ -1,5 +1,7 @@
 const fs = require("node:fs/promises");
+const fscb = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 let paused = false;
 let cancelled = false;
@@ -39,6 +41,7 @@ const state = {
   candidates: [],
   largeFolders: [],
   duplicateBuckets: new Map(),
+  duplicateHashSkipped: 0,
   currentPath: "",
   startedAt: ""
 };
@@ -148,23 +151,86 @@ function trackDuplicateCandidate(filePath, stat) {
   state.duplicateBuckets.set(key, list);
 }
 
-function duplicateGroups() {
-  return [...state.duplicateBuckets.values()]
+function hashFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fscb.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+    stream.on("data", (chunk) => {
+      if (cancelled) {
+        stream.destroy(new Error("Scan cancelado pelo usuario."));
+        return;
+      }
+      hash.update(chunk);
+    });
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+function duplicateGroupFromItems(items, index) {
+  const sorted = [...items].sort((a, b) => new Date(b.modifiedAt || 0) - new Date(a.modifiedAt || 0));
+  const size = sorted[0]?.size || 0;
+  const contentHash = sorted[0]?.contentHash || "";
+  const hashConfirmed = Boolean(contentHash);
+  return {
+    id: hashConfirmed
+      ? `duplicate-hash-${index}-${contentHash.slice(0, 16)}`
+      : `duplicate-${index}-${Buffer.from(`${sorted[0]?.name || ""}${size}`).toString("base64").slice(0, 12)}`,
+    name: sorted[0]?.name || "Arquivo",
+    size,
+    copies: sorted.length,
+    reviewableBytes: size * Math.max(0, sorted.length - 1),
+    confidence: hashConfirmed ? "Hash confirmado" : "Possível duplicado",
+    contentHash: hashConfirmed ? contentHash : "",
+    algorithm: hashConfirmed ? "SHA-256" : "Nome e tamanho",
+    reason: hashConfirmed
+      ? "Arquivos com mesmo nome, mesmo tamanho e mesmo hash SHA-256. Ainda assim, o DiskSnoop não move nada automaticamente."
+      : "Arquivos com mesmo nome e tamanho encontrados em caminhos diferentes. Ative a verificação por hash ou compare o conteúdo antes de mover qualquer cópia.",
+    items: sorted
+  };
+}
+
+async function duplicateGroups() {
+  const candidateGroups = [...state.duplicateBuckets.values()]
     .filter((items) => items.length > 1)
-    .map((items, index) => {
-      const sorted = items.sort((a, b) => new Date(b.modifiedAt || 0) - new Date(a.modifiedAt || 0));
-      const size = sorted[0]?.size || 0;
-      return {
-        id: `duplicate-${index}-${Buffer.from(`${sorted[0]?.name || ""}${size}`).toString("base64").slice(0, 12)}`,
-        name: sorted[0]?.name || "Arquivo",
-        size,
-        copies: sorted.length,
-        reviewableBytes: size * Math.max(0, sorted.length - 1),
-        confidence: "Possível duplicado",
-        reason: "Arquivos com mesmo nome e tamanho encontrados em caminhos diferentes. Confirme o conteúdo antes de mover qualquer cópia.",
-        items: sorted
-      };
-    })
+    .sort((a, b) => (b[0]?.size || 0) * b.length - (a[0]?.size || 0) * a.length)
+    .slice(0, 250);
+
+  if (config.verifyDuplicateHashes === false) {
+    return candidateGroups
+      .map((items, index) => duplicateGroupFromItems(items, index))
+      .sort((a, b) => b.reviewableBytes - a.reviewableBytes)
+      .slice(0, 250);
+  }
+
+  const groups = [];
+  let processed = 0;
+  for (const items of candidateGroups) {
+    await waitIfPaused();
+    processed += 1;
+    const byHash = new Map();
+    for (const item of items) {
+      await waitIfPaused();
+      state.currentPath = item.path;
+      maybeProgress(true);
+      try {
+        const contentHash = await hashFile(item.path);
+        const hashedItem = { ...item, contentHash };
+        const list = byHash.get(contentHash) || [];
+        list.push(hashedItem);
+        byHash.set(contentHash, list);
+      } catch {
+        state.duplicateHashSkipped += 1;
+      }
+    }
+
+    for (const [contentHash, hashedItems] of byHash.entries()) {
+      if (hashedItems.length < 2) continue;
+      groups.push(duplicateGroupFromItems(hashedItems, processed));
+    }
+  }
+
+  return groups
     .sort((a, b) => b.reviewableBytes - a.reviewableBytes)
     .slice(0, 250);
 }
@@ -395,7 +461,8 @@ async function start(payload) {
       scanRoots: roots,
       largeFolders: state.largeFolders.slice(0, 500),
       candidates: state.candidates.slice(0, 1000),
-      duplicateGroups: duplicateGroups()
+      duplicateGroups: await duplicateGroups(),
+      duplicateHashSkipped: state.duplicateHashSkipped
     };
     post("progress", { progress: 100, currentPath: payload.root, files: state.files, directories: state.directories, skipped: state.skipped, mappedBytes: state.mappedBytes, candidates: state.candidates.length });
     if (process.send) process.send({ type: "done", result });

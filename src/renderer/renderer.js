@@ -3,7 +3,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-const APP_VERSION_LABEL = "0.3.0-beta.1";
+let APP_VERSION_LABEL = "1.0.0";
 
 const state = {
   screen: "welcome",
@@ -46,7 +46,26 @@ const state = {
   leftoversLocation: "Todos",
   leftoversLimit: 80,
   paused: false,
-  toast: ""
+  toast: "",
+  update: {
+    status: "idle",
+    currentVersion: APP_VERSION_LABEL,
+    latestVersion: "",
+    lastCheckAt: "",
+    channel: "Estável",
+    buildMode: "Desenvolvimento",
+    updateMode: "assisted",
+    autoUpdaterAvailable: false,
+    releasesPage: "",
+    release: null,
+    asset: null,
+    downloaded: null,
+    progress: 0,
+    error: "",
+    ignoredVersion: "",
+    remindAfter: "",
+    hiddenUntilReminder: false
+  }
 };
 
 let lastRenderedTab = null;
@@ -80,6 +99,16 @@ function normalizeTheme(settings) {
   if (!themeLabels[normalized.theme]) normalized.theme = "light";
   normalized.ignoredPaths = Array.isArray(normalized.ignoredPaths) ? normalized.ignoredPaths : [];
   normalized.includedPaths = Array.isArray(normalized.includedPaths) ? normalized.includedPaths : [];
+  if (normalized.verifyDuplicateHashes === undefined) normalized.verifyDuplicateHashes = true;
+  normalized.update = {
+    checkOnStartup: true,
+    autoDownload: false,
+    includeBeta: false,
+    preferManual: false,
+    ignoredVersion: "",
+    remindAfter: "",
+    ...(normalized.update || {})
+  };
   return normalized;
 }
 
@@ -101,7 +130,7 @@ const iconPaths = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h1M3 12h1M3 18h1"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/>',
-  refresh: '<path d="M20 12a8 8 0 0 1-14 5"/><path d="M4 17h5v-5"/><path d="M4 12a8 8 0 0 1 14-5"/><path d="M20 7h-5v5"/>',
+  refresh: '<path d="M21 12a9 9 0 0 1-15.1 6.6"/><path d="M3 12A9 9 0 0 1 18.1 5.4"/><path d="M6 18.6H2.5V22"/><path d="M18 5.4h3.5V2"/>',
   reset: '<path d="M9 7H4V2"/><path d="M4.6 7A8 8 0 1 1 4 12"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/>',
   external: '<path d="M14 3h7v7"/><path d="M21 3 10 14"/><path d="M19 14v7H3V5h7"/>',
@@ -164,6 +193,11 @@ function fullDate(value) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
+function updateDate(value) {
+  if (!value) return "Ainda não verificado";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+}
+
 function durationLabel(ms) {
   const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
   if (!total) return "-";
@@ -174,6 +208,60 @@ function durationLabel(ms) {
     return `${hours}h ${minutes % 60}min`;
   }
   return minutes ? `${minutes}min ${seconds}s` : `${seconds}s`;
+}
+
+function updateStatusMeta(status) {
+  const map = {
+    idle: ["Aguardando verificação", "neutral"],
+    checking: ["Verificando atualização", "info"],
+    "up-to-date": ["Atualizado", "success"],
+    available: ["Nova versão disponível", "warning"],
+    downloading: ["Baixando atualização", "info"],
+    downloaded: ["Atualização baixada", "success"],
+    "restart-required": ["Reinício necessário", "warning"],
+    error: ["Erro ao verificar", "danger"],
+    offline: ["Offline", "neutral"],
+    ignored: ["Versão ignorada", "neutral"]
+  };
+  const [label, kind] = map[status] || map.idle;
+  return { label, kind };
+}
+
+function updateBadge() {
+  const update = state.update || {};
+  if (update.hiddenUntilReminder || update.status === "ignored" || update.status === "up-to-date") return "";
+  if (update.status === "available") return "Update";
+  if (update.status === "downloaded") return "Baixado";
+  if (update.status === "restart-required") return "Reiniciar";
+  if (update.status === "downloading") return `${Math.round(update.progress || 0)}%`;
+  return "";
+}
+
+function updateChangelogSections(body) {
+  const text = String(body || "").trim();
+  if (!text) return [];
+  const sections = [];
+  let current = { title: "Novidades", items: [] };
+  const pushCurrent = () => {
+    if (current.items.length) sections.push(current);
+  };
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const heading = line.replace(/^#+\s*/, "").trim();
+    if (/^#{1,4}\s+/.test(line)) {
+      pushCurrent();
+      current = { title: heading, items: [] };
+      continue;
+    }
+    const item = line.replace(/^[-*]\s*/, "").trim();
+    if (item) current.items.push(item);
+  }
+  pushCurrent();
+  return sections.slice(0, 6).map((section) => ({
+    title: section.title,
+    items: section.items.slice(0, 8)
+  }));
 }
 
 function usedPercent(drive) {
@@ -278,6 +366,26 @@ function safetyBadge(value) {
 
 function normalizeItemPath(value) {
   return String(value || "").toLowerCase().replaceAll("/", "\\");
+}
+
+function volumeKey(value) {
+  const match = String(value || "").match(/^[a-zA-Z]:/);
+  return match ? match[0].toUpperCase() : "";
+}
+
+function currentQuarantineLocation() {
+  return state.settings?.quarantinePath || state.appPaths?.defaultQuarantine || "";
+}
+
+function isQuarantineOnDifferentVolume(item) {
+  const sourceVolume = volumeKey(item?.path);
+  const quarantineVolume = volumeKey(currentQuarantineLocation());
+  return Boolean(sourceVolume && quarantineVolume && sourceVolume !== quarantineVolume);
+}
+
+function crossVolumeQuarantineNote(item) {
+  if (!isQuarantineOnDifferentVolume(item)) return "";
+  return "A quarentena está em outro disco. Arquivos podem ser copiados com verificação antes da remoção; pastas entre volumes podem ser bloqueadas por segurança. Para pastas grandes, escolha uma quarentena no mesmo disco.";
 }
 
 function isHiddenPath(item) {
@@ -416,6 +524,7 @@ function sidebar() {
           <button class="nav-item ${state.tab === id ? "active" : ""}" data-action="tab" data-tab="${id}">
             ${icon(iconName)}
             <span>${label}</span>
+            ${id === "updates" && updateBadge() ? `<em class="nav-badge">${escapeHtml(updateBadge())}</em>` : ""}
           </button>
         `).join("")}
       </nav>
@@ -661,7 +770,7 @@ function renderTab() {
   if (state.tab === "leftovers") return leftoversTab();
   if (state.tab === "quarantine") return quarantineTab();
   if (state.tab === "history") return historyTab();
-  if (state.tab === "updates") return updatesTab();
+  if (state.tab === "updates") return updatesTabV1();
   if (state.tab === "settings") return settingsTab();
   return "";
 }
@@ -714,6 +823,10 @@ function historicalReportNote() {
 
 function duplicateReviewableTotal() {
   return duplicateGroups().reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
+}
+
+function duplicateConfidenceKind(confidence = "") {
+  return confidence.toLowerCase().includes("hash") ? "low" : "medium";
 }
 
 function possibleLeftoversCount() {
@@ -1028,6 +1141,7 @@ function fileDetails(item) {
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
       ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
@@ -1207,6 +1321,7 @@ function candidateDetails(item) {
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
       ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
@@ -1279,18 +1394,24 @@ function duplicatesTab() {
   if (!selected && state.selectedDuplicateId) state.selectedDuplicateId = "";
   const reviewable = groups.reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
   const totalCopies = groups.reduce((sum, group) => sum + (group.items?.length || 0), 0);
+  const hashSkipped = Number(state.scanResult?.duplicateHashSkipped || 0);
+  const hashEnabled = state.settings?.verifyDuplicateHashes !== false;
   return `
     <section>
       <div class="page-heading">
         <h1>Possíveis Duplicados</h1>
         <p>${groups.length} grupos visíveis. Espaço revisável estimado: ${compactBytes(reviewable)}.</p>
       </div>
-      <div class="safety-note">${icon("shield")}Suspeita baseada em nome e tamanho. O DiskSnoop ainda não usa hash de conteúdo, então revise cada cópia antes de mover qualquer coisa.</div>
+      <div class="safety-note">${icon("shield")}${hashEnabled
+        ? "Duplicados são pré-filtrados por nome e tamanho e confirmados por hash SHA-256 quando o arquivo pode ser lido. Nada é removido automaticamente."
+        : "Hash de duplicados está desativado nas configurações. Os grupos abaixo são apenas suspeitas por nome e tamanho."}</div>
       <div class="leftover-summary duplicate-summary">
         <span><strong>${groups.length}</strong> grupos</span>
         <span><strong>${totalCopies}</strong> cópias</span>
         <span><strong>${compactBytes(reviewable)}</strong> estimado</span>
-        <span><strong>0</strong> ações automáticas</span>
+        ${hashEnabled
+          ? `<span><strong>${hashSkipped.toLocaleString("pt-BR")}</strong> sem hash</span>`
+          : "<span><strong>Hash</strong> desativado</span>"}
       </div>
       <div class="filters-row duplicates-filters">
         <label class="search-box">${icon("search")}<input data-field="duplicateSearch" value="${escapeHtml(state.duplicateSearch)}" placeholder="Buscar arquivo ou caminho..."></label>
@@ -1314,7 +1435,7 @@ function duplicatesTab() {
                 <td>${Number(group.copies || group.items?.length || 0).toLocaleString("pt-BR")}</td>
                 <td>${compactBytes(group.size)}</td>
                 <td>${compactBytes(group.reviewableBytes)}</td>
-                <td>${badge(group.confidence || "Possível", "medium")}</td>
+                <td>${badge(group.confidence || "Possível", duplicateConfidenceKind(group.confidence))}</td>
               </tr>
             `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum possível duplicado neste scan.</td></tr>`}
           </tbody>
@@ -1342,8 +1463,10 @@ function duplicateDetails(group) {
           <span>Cópias <strong>${Number(items.length).toLocaleString("pt-BR")}</strong></span>
           <span>Tamanho cada <strong>${compactBytes(group.size)}</strong></span>
           <span>Estimativa <strong>${compactBytes(group.reviewableBytes)}</strong></span>
+          <span>Verificação <strong>${escapeHtml(group.algorithm || "Nome e tamanho")}</strong></span>
         </div>
       </div>
+      ${group.contentHash ? `<p class="hash-line">Hash SHA-256: <code>${escapeHtml(group.contentHash)}</code></p>` : ""}
       <div class="duplicate-copy-list">
         ${items.map((item, index) => `
           <div class="duplicate-copy-row ${index === 0 ? "reference" : "suspect"}">
@@ -1354,7 +1477,7 @@ function duplicateDetails(group) {
           </div>
         `).join("")}
       </div>
-      <p class="muted">A primeira linha é apenas a cópia mais recente pelo horário de modificação, não uma decisão de qual arquivo manter. Abra os caminhos e compare o conteúdo antes de mover qualquer cópia por outra aba.</p>
+      <p class="muted">A primeira linha é apenas a cópia mais recente pelo horário de modificação, não uma decisão de qual arquivo manter. Mesmo com hash confirmado, abra os caminhos quando houver dúvida antes de mover qualquer cópia por outra aba.</p>
     </section>
   `;
 }
@@ -1580,6 +1703,7 @@ function leftoverDetails(item) {
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-leftover" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
       ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
     </section>
   `;
@@ -1729,60 +1853,137 @@ function shortOrigin(value) {
   return `${parts[0]}\\${parts[1]}`;
 }
 
-function updatesTab() {
-  const releaseDate = "Em desenvolvimento";
+function updatesTabV1() {
+  const update = state.update || {};
+  const status = updateStatusMeta(update.status);
+  const settings = state.settings?.update || {};
+  const hasAsset = Boolean(update.asset?.url);
+  const changelogSections = updateChangelogSections(update.release?.body);
+  const isAutoUpdate = update.updateMode === "auto" && update.buildMode === "Instalado";
+  const isAssisted = !isAutoUpdate || settings.preferManual;
+  const canDownloadUpdate = isAutoUpdate || hasAsset;
+  const buildMode = update.buildMode || state.appPaths?.buildMode || "Desconhecido";
+  const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
+  const updateEngine = isAutoUpdate
+    ? "electron-updater ativo"
+    : buildMode === "Instalado" && settings.preferManual
+      ? "Manual por preferência"
+      : buildMode === "Instalado" && update.autoUpdaterAvailable === false
+        ? "electron-updater ausente"
+        : "Update assistido";
+  const releaseRequirement = buildMode === "Instalado" && !settings.preferManual
+    ? "Setup .exe, .blockmap e latest.yml no GitHub Release"
+    : "Artefato Windows publicado no GitHub Releases";
+  const actionByState = {
+    idle: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`,
+    checking: `<button class="primary" disabled>${icon("refresh")}Verificando...</button>`,
+    "up-to-date": `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`,
+    available: `
+      <button class="primary" data-action="update-download" ${canDownloadUpdate ? "" : "disabled"}>${icon("download")}Baixar atualização</button>
+      <button class="secondary" data-action="update-remind">${icon("clock")}Lembrar depois</button>
+      <button class="secondary" data-action="update-ignore">${icon("ban")}Ignorar esta versão</button>
+    `,
+    downloading: `<button class="primary" disabled>${icon("download")}Baixando ${Math.round(update.progress || 0)}%</button>`,
+    downloaded: `
+      <button class="primary" data-action="update-open-downloaded">${icon("external")}Abrir arquivo baixado</button>
+      <button class="secondary" data-action="update-show-downloaded">${icon("folder")}Mostrar na pasta</button>
+      <button class="secondary" disabled>${icon("refresh")}Reinício automático indisponível no portable</button>
+    `,
+    "restart-required": `<button class="primary" data-action="update-install-restart">${icon("refresh")}Reiniciar para atualizar</button>`,
+    error: `<button class="primary" data-action="update-check">${icon("refresh")}Tentar novamente</button>`,
+    offline: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar novamente</button>`,
+    ignored: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`
+  };
   return `
     <section>
-      <div class="page-heading">
-        <h1>Atualização</h1>
-        <p>Espaço reservado para o sistema de updates do DiskSnoop. Ainda não há verificação automática nesta beta.</p>
+      <div class="page-heading update-heading">
+        <span class="page-heading-icon">${icon("download")}</span>
+        <div>
+          <h1>Atualização</h1>
+          <p>Gerencie versões, novidades e atualizações do DiskSnoop.</p>
+        </div>
       </div>
 
-      <section class="panel update-placeholder">
-        <div class="update-hero-icon">${icon("download")}</div>
-        <div class="update-copy">
-          <span class="beta-pill">Preparado para o futuro</span>
-          <h2>Sistema de atualização em preparação</h2>
-          <p>Essa área será usada futuramente para verificar novas versões, changelog e instalação de updates. Por enquanto ela só reserva o fluxo visual, sem consultar GitHub Releases, baixar arquivos ou reiniciar o app.</p>
-        </div>
-        <div class="update-status-grid">
-          <div><span>Versão atual</span><strong>${escapeHtml(APP_VERSION_LABEL)}</strong></div>
-          <div><span>Última versão disponível</span><strong>Em breve</strong></div>
-          <div><span>Canal</span><strong>Beta</strong></div>
-          <div><span>Status</span><strong>${releaseDate}</strong></div>
-        </div>
-        <div class="release-roadmap">
-          <article>
-            <span>Atual</span>
-            <strong>0.3.0-beta</strong>
-            <p>Revisão final de estabilidade, histórico, quarentena, empacotamento e UX antes da linha estável.</p>
-          </article>
-          <article>
-            <span>Depois</span>
-            <strong>1.0</strong>
-            <p>Primeira versão estável com o fluxo principal fechado e comportamento seguro por padrão.</p>
-          </article>
-          <article>
-            <span>Futuro</span>
-            <strong>Update real</strong>
-            <p>Verificação de releases, changelog, download e aplicação quando o fluxo de release estiver maduro.</p>
-          </article>
-        </div>
-        <div class="update-future-list">
-          <h3>Campos reservados para depois</h3>
-          <ul>
-            <li>Versão atual e última versão disponível.</li>
-            <li>Status de verificação e canal de release.</li>
-            <li>Verificar nova versão manualmente.</li>
-            <li>Mostrar changelog antes de atualizar.</li>
-            <li>Baixar atualização com confirmação do usuário.</li>
-            <li>Reiniciar para aplicar update quando isso existir.</li>
-          </ul>
-        </div>
-        <div class="detail-actions">
-          <button class="primary" disabled>${icon("download")}Verificar agora</button>
-          <button class="secondary" disabled>${icon("list")}Changelog em breve</button>
-        </div>
+      <section class="update-grid">
+        <article class="panel update-card update-status-card">
+          <div class="update-card-title">
+            <span class="update-hero-icon">${icon("download")}</span>
+            <div>
+              <span class="status-pill ${status.kind}">${escapeHtml(status.label)}</span>
+              <h2>${update.status === "available" ? `DiskSnoop ${escapeHtml(update.latestVersion)}` : "DiskSnoop estável e seguro"}</h2>
+              <p>${update.status === "available"
+                ? "Existe uma versão mais nova. Revise as notas antes de baixar."
+                : update.status === "downloaded"
+                  ? "O arquivo foi baixado. Como este canal é portable, abra o instalador/arquivo manualmente."
+                  : update.status === "restart-required"
+                    ? "A atualização foi baixada pelo instalador. O DiskSnoop só reinicia quando você confirmar."
+                  : update.error
+                    ? escapeHtml(update.error)
+                    : "O app pode verificar novas versões sem interromper seu trabalho."}</p>
+            </div>
+          </div>
+          <div class="update-status-grid">
+            <div><span>Versão instalada</span><strong>${escapeHtml(update.currentVersion || APP_VERSION_LABEL)}</strong></div>
+            <div><span>Última versão disponível</span><strong>${escapeHtml(update.latestVersion || "-")}</strong></div>
+            <div><span>Última verificação</span><strong>${escapeHtml(updateDate(update.lastCheckAt))}</strong></div>
+            <div><span>Canal atual</span><strong>${escapeHtml(update.channel || "Beta")}</strong></div>
+            <div><span>Modo de atualização</span><strong>${isAutoUpdate ? "Instalador automático" : "Assistido"}</strong></div>
+            <div><span>Artefato Windows</span><strong>${escapeHtml(isAutoUpdate ? "Gerenciado pelo instalador" : (update.asset?.name || "Não selecionado"))}</strong></div>
+          </div>
+        </article>
+
+        <article class="panel update-card">
+          <h2>Ações</h2>
+          <p>${isAssisted
+            ? "No build portable, o DiskSnoop verifica e baixa a nova versão, mas não substitui o executável aberto. Use o arquivo baixado ou a página de releases para atualizar manualmente."
+            : "No canal instalado, o DiskSnoop baixa a atualização pelo instalador e só reinicia para aplicar depois da sua confirmação."}</p>
+          ${update.status === "downloading" ? `<div class="update-progress">${progressBar(update.progress || 0)}<span>${Math.round(update.progress || 0)}%</span></div>` : ""}
+          <div class="detail-actions update-actions">
+            ${actionByState[update.status] || actionByState.idle}
+            <button class="secondary" data-action="update-open-releases">${icon("external")}Abrir releases</button>
+            ${update.release?.url ? `<button class="secondary" data-action="update-open-release">${icon("list")}Página desta versão</button>` : ""}
+          </div>
+        </article>
+
+        <article class="panel update-card update-diagnostics">
+          <h2>Diagnóstico da instalação</h2>
+          <p>Use este bloco para conferir se a release publicada combina com o tipo de app em execução.</p>
+          <div class="update-diagnostics-grid">
+            <div><span>Modo do app</span><strong>${escapeHtml(buildMode)}</strong></div>
+            <div><span>Motor de update</span><strong>${escapeHtml(updateEngine)}</strong></div>
+            <div><span>Release esperada</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
+            <div><span>Dados locais</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
+          </div>
+          <div class="detail-actions update-actions">
+            <button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button>
+          </div>
+        </article>
+
+        <article class="panel update-card">
+          <h2>Changelog</h2>
+          ${changelogSections.length ? `
+            <div class="update-changelog">
+              ${changelogSections.map((section) => `
+                <section>
+                  <h3>${escapeHtml(section.title)}</h3>
+                  <ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                </section>
+              `).join("")}
+            </div>
+          ` : `<p class="muted">Nenhum changelog disponível ainda. Se existir uma release publicada, você ainda pode abrir a página de releases para revisar manualmente.</p>`}
+        </article>
+
+        <article class="panel update-card">
+          <h2>Preferências</h2>
+          <div class="update-preferences">
+            <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> Verificar atualização ao abrir</label>
+            <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> Participar de versões beta</label>
+            <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> Preferir update manual mesmo no instalador</label>
+            <label class="disabled"><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload ? "checked" : ""} disabled> Baixar automaticamente em segundo plano <span>O DiskSnoop sempre pede confirmação antes de baixar</span></label>
+          </div>
+          ${update.ignoredVersion ? `<p class="muted">Versão ignorada: ${escapeHtml(update.ignoredVersion)}. Verificar manualmente busca novamente e mostra versões futuras.</p>` : ""}
+          ${update.remindAfter ? `<p class="muted">Lembrete adiado até ${escapeHtml(updateDate(update.remindAfter))}.</p>` : ""}
+        </article>
       </section>
     </section>
   `;
@@ -1828,6 +2029,7 @@ function settingsTab() {
         ${checkLine("Detectar downloads antigos", "detectOldDownloads")}
         ${checkLine("Detectar compactados antigos", "detectOldArchives")}
         ${checkLine("Detectar logs grandes e temporários", "detectLogsAndTemps")}
+        ${checkLine("Confirmar duplicados com hash SHA-256", "verifyDuplicateHashes")}
         <span>Itens sensíveis como Windows, System32, drivers e programas ativos continuam fora dos candidatos normais.</span>
       </section>
 
@@ -1843,7 +2045,7 @@ function settingsTab() {
           <button class="secondary" data-action="open-quarantine">${icon("external")}Abrir quarentena</button>
           <button class="secondary" data-action="reset-quarantine-path">${icon("reset")}Usar padrão</button>
         </div>
-        ${checkLine("Sugerir D: quando C: estiver cheio", "suggestDForC")}
+        <span>Para mover pastas grandes, prefira uma quarentena no mesmo disco do item. A versão 1.0 pode bloquear pastas entre discos para evitar cópia parcial seguida de remoção.</span>
       </section>
 
       <h2>Escopo do scan</h2>
@@ -1971,12 +2173,20 @@ async function loadBasics() {
     state.drives = drives;
     state.isPackaged = Boolean(appPaths?.isPackaged);
     state.appPaths = appPaths || null;
+    APP_VERSION_LABEL = appPaths?.version || APP_VERSION_LABEL;
+    state.update.currentVersion = APP_VERSION_LABEL;
     state.quarantine = quarantine;
     syncHiddenPathsFromQuarantine(quarantine);
     state.history = history;
     state.selectedDrive = mostUrgentDrive();
     restoreLastScan();
     render();
+
+    refreshUpdateState()
+      .then(() => {
+        if (state.settings?.update?.checkOnStartup !== false) runUpdateCheck(false);
+      })
+      .catch(() => {});
 
     api.listInstalledApps()
       .then((apps) => {
@@ -2067,11 +2277,13 @@ function createTestScan() {
       size: 1.4 * GB,
       copies: 2,
       reviewableBytes: 1.4 * GB,
-      confidence: "Possível duplicado",
-      reason: "Arquivos com mesmo nome e tamanho encontrados em caminhos diferentes. Confirme o conteúdo antes de mover qualquer cópia.",
+      confidence: "Hash confirmado",
+      algorithm: "SHA-256",
+      contentHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      reason: "Arquivos com mesmo nome, mesmo tamanho e mesmo hash SHA-256. Ainda assim, o DiskSnoop não move nada automaticamente.",
       items: [
-        { id: "dup-test-1", name: "aula-backup.mp4", path: `${root}Users\\Voce\\Videos\\aula-backup.mp4`, size: 1.4 * GB, modifiedAt: new Date(Date.now() - 40 * 86400000).toISOString() },
-        { id: "dup-test-2", name: "aula-backup.mp4", path: `${root}Users\\Voce\\Downloads\\aula-backup.mp4`, size: 1.4 * GB, modifiedAt: new Date(Date.now() - 120 * 86400000).toISOString() }
+        { id: "dup-test-1", name: "aula-backup.mp4", path: `${root}Users\\Voce\\Videos\\aula-backup.mp4`, size: 1.4 * GB, modifiedAt: new Date(Date.now() - 40 * 86400000).toISOString(), contentHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
+        { id: "dup-test-2", name: "aula-backup.mp4", path: `${root}Users\\Voce\\Downloads\\aula-backup.mp4`, size: 1.4 * GB, modifiedAt: new Date(Date.now() - 120 * 86400000).toISOString(), contentHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
       ]
     }]
   };
@@ -2101,14 +2313,6 @@ async function startScan(letter) {
   state.scanProgress = { progress: 0, currentPath: drive?.letter || "", files: 0, skipped: 0, mappedBytes: 0, candidates: 0 };
   state.paused = false;
 
-  if (state.settings.suggestDForC !== false && !state.settings.quarantinePath && drive?.letter?.toUpperCase().startsWith("C:")) {
-    const d = state.drives.find((item) => item.letter.toUpperCase().startsWith("D:") && item.free > 10 * GB);
-    if (d) {
-      state.settings.quarantinePath = `${d.letter}\\Quarantine`;
-      await api.saveSettings(state.settings);
-    }
-  }
-
   state.screen = "scanning";
   render();
   try {
@@ -2124,6 +2328,46 @@ async function refreshData() {
   state.quarantine = await api.listQuarantine();
   syncHiddenPathsFromQuarantine(state.quarantine);
   state.history = await api.listHistory();
+}
+
+async function refreshUpdateState() {
+  if (!api.getUpdateState) return;
+  state.update = await api.getUpdateState();
+  if (state.screen === "app") render();
+}
+
+async function runUpdateCheck(manual = true) {
+  if (!api.checkForUpdates) return;
+  state.update = { ...state.update, status: "checking", progress: 0, error: "" };
+  render();
+  try {
+    state.update = await api.checkForUpdates({ manual });
+    render();
+    if (manual) {
+      const meta = updateStatusMeta(state.update.status);
+      setToast(meta.label);
+    }
+  } catch (error) {
+    state.update = { ...state.update, status: "error", error: cleanIpcError(error), progress: 0 };
+    render();
+    if (manual) setToast(cleanIpcError(error));
+  }
+}
+
+async function runUpdateDownload() {
+  if (!api.downloadUpdate) return;
+  state.update = { ...state.update, status: "downloading", progress: 0, error: "" };
+  render();
+  try {
+    state.update = await api.downloadUpdate();
+    render();
+    if (state.update.status === "downloaded") setToast("Atualização baixada.");
+    if (state.update.status === "error" || state.update.status === "offline") setToast(state.update.error || "Download interrompido.");
+  } catch (error) {
+    state.update = { ...state.update, status: "error", error: cleanIpcError(error), progress: 0 };
+    render();
+    setToast(cleanIpcError(error));
+  }
 }
 
 async function openPathWithFeedback(targetPath) {
@@ -2207,9 +2451,10 @@ async function quarantineItems(items) {
       icon: "shield"
     });
   }
+  const crossVolumeCount = valid.filter(isQuarantineOnDifferentVolume).length;
   const ok = await confirmModal({
     title: "Mover para quarentena",
-    message: `Mover ${valid.length} item(ns) para a quarentena? Nada será excluído permanentemente.`,
+    message: `Mover ${valid.length} item(ns) para a quarentena? Nada será excluído permanentemente.${crossVolumeCount ? " A quarentena está em outro disco para parte da seleção; pastas entre volumes podem ser bloqueadas por segurança. Para pastas grandes, escolha uma quarentena no mesmo disco." : ""}`,
     confirmText: "Mover",
     icon: "shield"
   });
@@ -2405,7 +2650,60 @@ document.addEventListener("click", async (event) => {
     if (state.tab === "quarantine") {
       await refreshData();
     }
+    if (state.tab === "updates") {
+      await refreshUpdateState();
+    }
     render();
+  }
+  if (action === "update-check") {
+    await runUpdateCheck(true);
+  }
+  if (action === "update-download") {
+    await runUpdateDownload();
+  }
+  if (action === "update-open-releases") {
+    await api.openReleases();
+  }
+  if (action === "update-open-release") {
+    await api.openUpdateRelease();
+  }
+  if (action === "update-open-downloaded") {
+    try {
+      await api.openDownloadedUpdate();
+    } catch (error) {
+      setToast(cleanIpcError(error));
+    }
+  }
+  if (action === "update-show-downloaded") {
+    try {
+      await api.showDownloadedUpdate();
+    } catch (error) {
+      setToast(cleanIpcError(error));
+    }
+  }
+  if (action === "update-install-restart") {
+    const ok = await confirmModal({
+      title: "Reiniciar para atualizar",
+      message: "O DiskSnoop será fechado e reaberto pelo instalador para aplicar a atualização baixada. Faça isso apenas quando nenhum scan ou ação de quarentena estiver em andamento.",
+      confirmText: "Reiniciar",
+      icon: "refresh"
+    });
+    if (!ok) return;
+    try {
+      await api.installUpdateAndRestart();
+    } catch (error) {
+      setToast(cleanIpcError(error));
+    }
+  }
+  if (action === "update-ignore") {
+    state.update = await api.ignoreUpdateVersion();
+    render();
+    setToast("Versão ignorada.");
+  }
+  if (action === "update-remind") {
+    state.update = await api.rememberUpdateLater();
+    render();
+    setToast("Vou lembrar de novo amanhã.");
   }
   if (action === "select-overview-candidate") {
     state.selectedItem = findCandidate(id);
@@ -2735,6 +3033,18 @@ document.addEventListener("change", async (event) => {
     return;
   }
 
+  if (event.target.dataset.updatePref) {
+    const pref = event.target.dataset.updatePref;
+    state.settings.update = {
+      ...(state.settings.update || {}),
+      [pref]: event.target.checked
+    };
+    state.settings = normalizeTheme(await api.saveSettings(state.settings));
+    await refreshUpdateState();
+    render();
+    return;
+  }
+
   if (updateSelectField(event.target) || updateSettingsControl(event.target)) {
     render();
   }
@@ -2766,5 +3076,12 @@ api.onScanError((payload) => {
     render();
   }
 });
+
+if (api.onUpdateState) {
+  api.onUpdateState((payload) => {
+    state.update = payload;
+    if (state.screen === "app") render();
+  });
+}
 
 loadBasics();
