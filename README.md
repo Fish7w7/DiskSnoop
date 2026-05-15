@@ -1,49 +1,70 @@
 # DiskSnoop
 
-DiskSnoop é um app desktop para Windows que ajuda a descobrir onde o espaço do SSD/HD está sendo consumido. Ele analisa discos, classifica pastas e arquivos relevantes, explica por que cada item apareceu e usa quarentena antes de qualquer exclusão definitiva.
+> App desktop para Windows que descobre onde o espaço do SSD/HD está sendo consumido — com quarentena antes de qualquer exclusão definitiva.
 
-> Versão 1.1: o DiskSnoop continua conservador por padrão. Nada é apagado automaticamente.
+![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
+![GitHub release](https://img.shields.io/github/v/release/Fish7w7/DiskSnoop)
+![GitHub releases](https://img.shields.io/github/downloads/Fish7w7/DiskSnoop/total)
 
-## Princípios
+## Download
 
-- Nada é apagado automaticamente.
-- Itens sensíveis do Windows não entram como candidatos normais de limpeza.
-- Toda remoção passa por revisão do usuário.
-- A quarentena permite restaurar itens antes de uma exclusão permanente.
-- Para pastas grandes, prefira uma quarentena no mesmo disco do item analisado.
+| Tipo | Link |
+|------|------|
+| 🖥️ Instalador (recomendado) | [DiskSnoop-Setup-1.1.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.1.0/DiskSnoop-Setup-1.1.0-x64.exe) |
+| 📦 Portable | [DiskSnoop-Portable-1.1.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.1.0/DiskSnoop-Portable-1.1.0-x64.exe) |
+
+> ⚠️ O app não tem assinatura de código. O Windows pode exibir aviso de app desconhecido — isso é esperado.
+
+---
+
+<!-- Adicione um screenshot ou GIF do app aqui. Exemplo:
+![DiskSnoop em uso](docs/screenshot.png)
+-->
+
+## O que ele faz
+
+O DiskSnoop analisa seus discos, classifica pastas e arquivos por tamanho, explica por que cada item apareceu e move candidatos para **quarentena** antes de qualquer remoção. Nada é apagado automaticamente.
+
+## Recursos
+
+**🔍 Análise de disco**
+Scanner em processo separado com progresso, pausa e cancelamento. Ranking das maiores pastas, aba de arquivos grandes e relatório com duração, contagens e itens sem acesso.
+
+**🧹 Limpeza inteligente**
+Candidatos para `node_modules`, `.venv`, `dist`, `build`, `.cache`, instaladores antigos, downloads antigos, logs e temporários. Duplicados verificados por nome, tamanho e hash SHA-256 configurável. Sobras de apps em AppData, ProgramData e Program Files com abordagem conservadora.
+
+**🗂️ Quarentena**
+Itens movidos para quarentena ficam fora do caminho original com metadados para restauração. Você decide quando excluir permanentemente — isso sempre exige confirmação explícita. Quarentena no mesmo disco é recomendada para pastas grandes (evita cópia antes da remoção).
+
+**📋 Histórico e configurações**
+Histórico de scans e ações com snapshots carregáveis. Configurações de limites, detectores, escopo, pastas ignoradas e local da quarentena.
+
+**🔄 Atualização**
+Verificação de updates no GitHub Releases com changelog, opção de lembrar depois e ignorar versão. No instalador, o download automático vem ativo por padrão — o reinício sempre exige confirmação. O portable usa fluxo assistido.
+
+**🌐 Idioma**
+Interface bilíngue em Português (Brasil) e English, configurável nas preferências.
 
 ## Segurança
 
-O scanner mostra itens sensíveis no mapa de uso quando aparecem como pastas grandes, mas não os coloca como candidatos normais de limpeza. Mover para quarentena remove o item do local original e guarda metadados para restauração. Excluir permanentemente só acontece por ação explícita do usuário.
+- Itens sensíveis do Windows aparecem no mapa de uso, mas não entram como candidatos normais de limpeza.
+- Mover para quarentena preserva metadados para restauração completa.
+- A exclusão permanente só acontece por ação explícita do usuário.
+- Updates não são aplicados durante scan ativo ou ações de quarentena em andamento.
+- Configurações, histórico, snapshots e quarentena ficam na pasta local do usuário e não são apagados por updates ou uninstall.
 
-A quarentena mais segura é no mesmo disco do item analisado, porque o Windows consegue mover a entrada sem copiar tudo antes. Quando a origem e a quarentena ficam em discos diferentes, o DiskSnoop pode bloquear pastas por segurança para evitar cópia parcial seguida de remoção. Arquivos ainda podem ser movidos entre discos, mas passam por cópia temporária e verificação de tamanho antes de remover a origem.
-
-## Recursos principais
-
-**Análise de disco**
-Scanner em processo separado com progresso, pausa e cancelamento. Ranking de maiores pastas, aba de arquivos grandes e relatório com duração, contagens e itens sem acesso.
-
-**Limpeza**
-Candidatos para `node_modules`, `.venv`, `dist`, `build`, `.cache`, instaladores antigos, downloads antigos, logs e temporários. Duplicados pré-filtrados por nome e tamanho, confirmados por hash SHA-256 configurável. Sobras de apps em AppData, ProgramData e Program Files com abordagem conservadora.
-
-**Quarentena**
-Restauração, exclusão permanente confirmada e status para arquivos ausentes. Quarentena no mesmo disco recomendada para pastas grandes.
-
-**Histórico e configurações**
-Histórico de scans e ações com snapshots carregáveis. Configurações de limites, detectores, escopo, pastas ignoradas e local da quarentena.
-
-**Atualização e idioma**
-Verificação no GitHub Releases com changelog, lembrar depois e ignorar versão. No canal instalado, o download automático vem ativo por padrão e o reinício continua dependendo de confirmação do usuário. O portable segue com fluxo assistido. A versão 1.1 traz interface bilíngue em Português e Inglês nos fluxos principais de entrada, scan, visão geral, atualização e configurações.
+> Quando origem e quarentena ficam em discos diferentes, pastas grandes podem ser bloqueadas para evitar cópia parcial seguida de remoção. Arquivos ainda podem ser movidos entre discos, mas passam por cópia temporária com verificação de tamanho antes da remoção da origem.
 
 ## Limites conhecidos
 
-- O app não tem assinatura de código. O Windows pode mostrar aviso de app desconhecido ao abrir o instalador ou portable.
 - O hash de duplicados só é calculado para grupos candidatos; arquivos bloqueados ou sem permissão podem ficar sem verificação.
-- Algumas pastas em `ProgramData`, `Program Files`, `Windows` ou caches de instaladores podem exigir permissão de administrador.
+- Algumas pastas em `ProgramData`, `Program Files` ou `Windows` podem exigir permissão de administrador.
 - A tela de sobras de apps é conservadora e pode mostrar pastas que ainda pertencem a apps instalados.
-- O build portable usa update assistido: o DiskSnoop pode verificar e baixar a nova versão, mas não substitui o executável aberto automaticamente.
-- O auto-update real depende do build instalado com `electron-updater` presente em `node_modules`.
-- Pastas entre discos diferentes podem ser bloqueadas pela quarentena. Arquivos entre discos usam cópia temporária com verificação antes da remoção da origem.
+- O auto-update do instalador depende de releases com `latest.yml` e `.blockmap` e da dependência `electron-updater` no build.
+- O portable não substitui automaticamente o executável aberto; usa atualização assistida.
+- Algumas mensagens de erro do sistema operacional podem aparecer no idioma original do Windows.
+
+---
 
 ## Desenvolvimento
 
@@ -61,9 +82,9 @@ npm run check
 npm test
 ```
 
-Os testes cobrem regras críticas de quarentena e a camada de tradução renderizada usada para evitar textos em Português quando a interface está em inglês.
+Os testes cobrem regras críticas de quarentena e a camada de tradução renderizada para evitar textos em Português quando a interface está em Inglês.
 
-## Build para Windows
+### Build para Windows
 
 ```powershell
 npm install
@@ -76,44 +97,27 @@ O instalador NSIS e o portable serão gerados em `release/`. Para gerar apenas o
 npm run dist:portable
 ```
 
-O setup usa instalação one-click por usuário atual. Ele instala em `%LOCALAPPDATA%\Programs\DiskSnoop`, não mostra a etapa "apenas para mim/todos os usuários" e não pede permissão de administrador por padrão. Os dados locais do app não são apagados no uninstall.
+O setup instala em `%LOCALAPPDATA%\Programs\DiskSnoop` por usuário atual, sem pedir permissão de administrador.
 
-## Publicar no GitHub Releases
+### Publicar no GitHub Releases
 
 1. Confirme a versão em `package.json`.
 2. Rode as validações:
-
-```powershell
-npm run check
-npm test
-```
-
+   ```powershell
+   npm run check
+   npm test
+   ```
 3. Gere os artefatos:
-
-```powershell
-npm run dist
-```
-
+   ```powershell
+   npm run dist
+   ```
 4. Crie e envie a tag:
-
-```powershell
-git tag v1.1.0
-git push origin v1.1.0
-```
-
+   ```powershell
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
 5. Anexe estes arquivos de `release/` na release do GitHub:
-
-- `DiskSnoop-Setup-1.1.0-x64.exe`
-- `DiskSnoop-Setup-1.1.0-x64.exe.blockmap`
-- `latest.yml`
-- `DiskSnoop-Portable-1.1.0-x64.exe`
-
-O instalador usa `latest.yml` e o `.blockmap` para o auto-update. O portable usa a aba Atualização como fluxo assistido.
-
-## Atualização
-
-A aba Atualização consulta as releases publicadas em `Fish7w7/DiskSnoop`, ignora drafts, respeita o canal Estável/Beta e compara versões usando semver. No build portable, o fluxo é assistido: o usuário revisa o changelog, baixa o artefato e decide quando executar a nova versão.
-
-No canal instalado, o DiskSnoop usa `electron-updater`. Ele verifica update, baixa automaticamente pelo instalador quando o usuário mantém essa preferência ativa, mostra progresso e só chama reinício depois de confirmação explícita. Quem preferir pode ativar o modo manual nas preferências.
-
-O DiskSnoop não reinicia sozinho, não atualiza durante scan ativo e bloqueia download enquanto uma ação de quarentena está em andamento. Configurações, histórico, snapshots e quarentena ficam na pasta local do usuário e não são apagados pelo update.
+   - `DiskSnoop-Setup-1.1.0-x64.exe`
+   - `DiskSnoop-Setup-1.1.0-x64.exe.blockmap`
+   - `latest.yml`
+   - `DiskSnoop-Portable-1.1.0-x64.exe`
