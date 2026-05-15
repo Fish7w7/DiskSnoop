@@ -312,30 +312,83 @@ function updateBadge() {
 }
 
 function updateChangelogSections(body) {
-  const text = String(body || "").trim();
+  const text = normalizeReleaseNotesBody(body);
   if (!text) return [];
   const sections = [];
-  let current = { title: "Novidades", items: [] };
+  const fallbackItems = [];
+  let current = null;
   const pushCurrent = () => {
-    if (current.items.length) sections.push(current);
+    if (current?.items.length) sections.push(current);
   };
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const heading = line.replace(/^#+\s*/, "").trim();
     if (/^#{1,4}\s+/.test(line)) {
+      const heading = cleanReleaseNotesText(line.replace(/^#+\s*/, "").trim());
       pushCurrent();
-      current = { title: heading, items: [] };
+      current = shouldShowChangelogSection(heading) ? { title: heading, items: [] } : null;
       continue;
     }
-    const item = line.replace(/^[-*]\s*/, "").trim();
-    if (item) current.items.push(item);
+    const bullet = line.match(/^[-*]\s+(.+)$/) || line.match(/^\d+[.)]\s+(.+)$/);
+    const item = cleanReleaseNotesText(bullet?.[1] || "");
+    if (item && current) current.items.push(item);
+    else if (item) fallbackItems.push(item);
   }
   pushCurrent();
+  if (!sections.length && fallbackItems.length) {
+    sections.push({ title: "Novidades", items: fallbackItems });
+  }
   return sections.slice(0, 6).map((section) => ({
     title: section.title,
     items: section.items.slice(0, 8)
   }));
+}
+
+function normalizeReleaseNotesBody(body) {
+  return decodeHtmlEntities(String(body || ""))
+    .replace(/\r/g, "")
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*h([1-4])[^>]*>/gi, (_match, level) => `\n${"#".repeat(Number(level))} `)
+    .replace(/<\s*\/h[1-4]\s*>/gi, "\n")
+    .replace(/<\s*li[^>]*>/gi, "\n- ")
+    .replace(/<\s*\/li\s*>/gi, "\n")
+    .replace(/<\s*\/?(ul|ol)[^>]*>/gi, "\n")
+    .replace(/<\s*p[^>]*>/gi, "\n")
+    .replace(/<\s*\/p\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function cleanReleaseNotesText(value) {
+  return decodeHtmlEntities(value)
+    .replace(/<\/?[^>]+>/g, "")
+    .replace(/^\s*[-*]\s+/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldShowChangelogSection(title) {
+  const normalized = String(title || "").toLowerCase();
+  if (!normalized) return false;
+  if (/^disksnoop\s+v?\d/i.test(normalized)) return false;
+  return ![
+    "como instalar",
+    "limites conhecidos",
+    "how to install",
+    "known limits"
+  ].includes(normalized);
 }
 
 function localChangelogSections(version) {
