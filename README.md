@@ -76,6 +76,8 @@ O instalador NSIS e o portable serão gerados em `release/`. Para gerar apenas o
 npm run dist:portable
 ```
 
+O setup usa instalação one-click por usuário atual. Ele instala em `%LOCALAPPDATA%\Programs\DiskSnoop`, não mostra a etapa "apenas para mim/todos os usuários" e não pede permissão de administrador por padrão. Os dados locais do app não são apagados no uninstall.
+
 ## Publicar no GitHub Releases
 
 1. Confirme a versão em `package.json`.
