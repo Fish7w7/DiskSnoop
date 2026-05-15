@@ -8,6 +8,8 @@
       try {
         const t = localStorage.getItem("disksnoop-theme");
         if (t) document.documentElement.dataset.theme = t;
+        const language = localStorage.getItem("disksnoop-language");
+        if (language) document.documentElement.lang = language;
       } catch {}
     </script>
     <link rel="stylesheet" href="./styles.css" />
@@ -24,32 +26,58 @@
             </div>
           </div>
           <h1>DiskSnoop</h1>
-          <p class="boot-status">Carregando configurações...</p>
+          <p class="boot-status" data-boot-status aria-live="polite">Carregando configurações...</p>
           <div class="boot-loader">
-            <span></span>
+            <span data-boot-progress></span>
           </div>
           <div class="boot-meta">
             <span class="boot-dot"></span>
-            <span class="boot-version">v1.0.0</span>
+            <span class="boot-version">v1.1.0</span>
           </div>
         </section>
       </main>
       <script>
-        const msgs = [
-          "Carregando configurações...",
-          "Detectando discos locais...",
-          "Verificando quarentena...",
-          "Carregando histórico...",
-          "Quase pronto..."
-        ];
-        let i = 0;
-        const el = document.querySelector(".boot-status");
-        const iv = setInterval(() => {
-          i = (i + 1) % msgs.length;
-          if (el) el.textContent = msgs[i];
-        }, 1600);
+        (() => {
+          const steps = [
+            { key: "loading", text: { "pt-BR": "Preparando DiskSnoop...", "en-US": "Preparing DiskSnoop..." } },
+            { key: "ready", text: { "pt-BR": "Abrindo app...", "en-US": "Opening app..." } }
+          ];
+          const status = document.querySelector("[data-boot-status]");
+          let language = "pt-BR";
+          let current = 0;
+          try {
+            const saved = localStorage.getItem("disksnoop-language");
+            if (saved === "en-US") language = saved;
+          } catch {}
+
+          const applyStep = (index) => {
+            current = Math.max(0, Math.min(steps.length - 1, index));
+            const step = steps[current];
+            if (status) status.textContent = step.text[language] || step.text["pt-BR"];
+          };
+
+          window.diskSnoopBoot = {
+            setLanguage(nextLanguage) {
+              if (nextLanguage === "en-US" || nextLanguage === "pt-BR") {
+                language = nextLanguage;
+                document.documentElement.lang = language;
+                applyStep(current);
+              }
+            },
+            setStep(stepKey) {
+              const index = typeof stepKey === "number"
+                ? stepKey
+                : steps.findIndex((step) => step.key === stepKey);
+              if (index >= 0) applyStep(index);
+            }
+          };
+
+          applyStep(0);
+        })();
       </script>
     </div>
+    <script src="./i18n.js"></script>
+    <script src="./local-changelog.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

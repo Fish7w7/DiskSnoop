@@ -44,7 +44,9 @@ function dataFile(name) {
 }
 
 const defaultSettings = {
+  settingsVersion: 2,
   theme: "light",
+  language: "pt-BR",
   largeFileSize: 1024 * 1024 * 1024,
   largeFolderSize: 2 * 1024 * 1024 * 1024,
   duplicateFileSize: 50 * 1024 * 1024,
@@ -61,7 +63,7 @@ const defaultSettings = {
   quarantinePath: "",
   update: {
     checkOnStartup: true,
-    autoDownload: false,
+    autoDownload: true,
     includeBeta: false,
     preferManual: false,
     ignoredVersion: "",
@@ -93,14 +95,23 @@ async function writeJson(fileName, value) {
 
 async function getSettings() {
   const saved = await readJson("settings.json", {});
+  const savedUpdate = saved.update || {};
+  const shouldMigrateAutoDownload = saved.settingsVersion !== 2 && savedUpdate.autoDownload === false;
   return {
     ...defaultSettings,
     ...saved,
+    settingsVersion: defaultSettings.settingsVersion,
+    language: ["pt-BR", "en-US"].includes(saved.language) ? saved.language : defaultSettings.language,
     ignoredPaths: Array.isArray(saved.ignoredPaths) ? saved.ignoredPaths : defaultSettings.ignoredPaths,
     includedPaths: Array.isArray(saved.includedPaths) ? saved.includedPaths : defaultSettings.includedPaths,
     update: {
       ...defaultSettings.update,
-      ...(saved.update || {})
+      ...savedUpdate,
+      autoDownload: shouldMigrateAutoDownload
+        ? true
+        : savedUpdate.autoDownload !== undefined
+          ? Boolean(savedUpdate.autoDownload)
+          : defaultSettings.update.autoDownload
     }
   };
 }
@@ -693,6 +704,7 @@ function installedUpdaterRelease(info = {}) {
 function configureAutoUpdater(settings) {
   if (!autoUpdater || autoUpdaterConfigured) return;
   autoUpdaterConfigured = true;
+  // O download automatico fica sob controle do DiskSnoop para respeitar scan/quarentena.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = Boolean(settings?.update?.includeBeta);
@@ -702,9 +714,9 @@ function configureAutoUpdater(settings) {
     saveUpdateState({ status: "checking", progress: 0, error: "", lastCheckAt: new Date().toISOString() }).catch(() => {});
   });
 
-  autoUpdater.on("update-available", (info) => {
+  autoUpdater.on("update-available", async (info) => {
     const release = installedUpdaterRelease(info);
-    saveUpdateState({
+    await saveUpdateState({
       status: "available",
       latestVersion: release.version || info.version || "",
       release,
@@ -715,6 +727,7 @@ function configureAutoUpdater(settings) {
       hiddenUntilReminder: false,
       lastCheckAt: new Date().toISOString()
     }).catch(() => {});
+    await maybeDownloadInstalledUpdateAutomatically().catch(() => {});
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -763,6 +776,20 @@ function configureAutoUpdater(settings) {
       lastCheckAt: new Date().toISOString()
     }).catch(() => {});
   });
+}
+
+async function maybeDownloadInstalledUpdateAutomatically() {
+  const settings = await getSettings();
+  if (!canUseAutoUpdater(settings) || settings.update.autoDownload === false) return null;
+  const state = await getUpdateState();
+  if (state.status !== "available") return state;
+  if (activeScan) {
+    return saveUpdateState({ error: "Atualizacao encontrada. O download automatico ficou aguardando o scan terminar." });
+  }
+  if (protectedActionCount > 0) {
+    return saveUpdateState({ error: "Atualizacao encontrada. O download automatico ficou aguardando a quarentena terminar." });
+  }
+  return downloadUpdate();
 }
 
 async function checkInstalledUpdater(settings) {

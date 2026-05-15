@@ -2,7 +2,7 @@
 
 DiskSnoop é um app desktop para Windows que ajuda a descobrir onde o espaço do SSD/HD está sendo consumido. Ele analisa discos, classifica pastas e arquivos relevantes, explica por que cada item apareceu e usa quarentena antes de qualquer exclusão definitiva.
 
-> Versão 1.0: o DiskSnoop é conservador por padrão. Nada é apagado automaticamente.
+> Versão 1.1: o DiskSnoop continua conservador por padrão. Nada é apagado automaticamente.
 
 ## Princípios
 
@@ -16,7 +16,7 @@ DiskSnoop é um app desktop para Windows que ajuda a descobrir onde o espaço do
 
 O scanner mostra itens sensíveis no mapa de uso quando aparecem como pastas grandes, mas não os coloca como candidatos normais de limpeza. Mover para quarentena remove o item do local original e guarda metadados para restauração. Excluir permanentemente só acontece por ação explícita do usuário.
 
-A quarentena mais segura é no mesmo disco do item analisado, porque o Windows consegue mover a entrada sem copiar tudo antes. Quando a origem e a quarentena ficam em discos diferentes, o DiskSnoop 1.0 bloqueia pastas por segurança para evitar cópia parcial seguida de remoção. Arquivos ainda podem ser movidos entre discos, mas passam por cópia temporária e verificação de tamanho antes de remover a origem.
+A quarentena mais segura é no mesmo disco do item analisado, porque o Windows consegue mover a entrada sem copiar tudo antes. Quando a origem e a quarentena ficam em discos diferentes, o DiskSnoop pode bloquear pastas por segurança para evitar cópia parcial seguida de remoção. Arquivos ainda podem ser movidos entre discos, mas passam por cópia temporária e verificação de tamanho antes de remover a origem.
 
 ## Recursos principais
 
@@ -32,8 +32,8 @@ Restauração, exclusão permanente confirmada e status para arquivos ausentes. 
 **Histórico e configurações**
 Histórico de scans e ações com snapshots carregáveis. Configurações de limites, detectores, escopo, pastas ignoradas e local da quarentena.
 
-**Atualização**
-Verificação no GitHub Releases com changelog, download assistido, lembrar depois e ignorar versão. Auto-update no canal instalado com progresso real e reinício apenas com confirmação do usuário. Temas Claro e Escuro.
+**Atualização e idioma**
+Verificação no GitHub Releases com changelog, lembrar depois e ignorar versão. No canal instalado, o download automático vem ativo por padrão e o reinício continua dependendo de confirmação do usuário. O portable segue com fluxo assistido. A versão 1.1 traz interface bilíngue em Português e Inglês nos fluxos principais de entrada, scan, visão geral, atualização e configurações.
 
 ## Limites conhecidos
 
@@ -43,7 +43,7 @@ Verificação no GitHub Releases com changelog, download assistido, lembrar depo
 - A tela de sobras de apps é conservadora e pode mostrar pastas que ainda pertencem a apps instalados.
 - O build portable usa update assistido: o DiskSnoop pode verificar e baixar a nova versão, mas não substitui o executável aberto automaticamente.
 - O auto-update real depende do build instalado com `electron-updater` presente em `node_modules`.
-- A versão 1.0 pode bloquear a quarentena de pastas entre discos diferentes. Arquivos entre discos usam cópia temporária com verificação antes da remoção da origem.
+- Pastas entre discos diferentes podem ser bloqueadas pela quarentena. Arquivos entre discos usam cópia temporária com verificação antes da remoção da origem.
 
 ## Desenvolvimento
 
@@ -58,10 +58,10 @@ npm run dev
 
 ```powershell
 npm run check
-npm run test:quarantine
+npm test
 ```
 
-O teste de quarentena cobre caminhos sensíveis, dados internos do DiskSnoop, raízes confiáveis, registros antigos e bloqueio de pastas, links e itens especiais entre volumes.
+Os testes cobrem regras críticas de quarentena e a camada de tradução renderizada usada para evitar textos em Português quando a interface está em inglês.
 
 ## Build para Windows
 
@@ -83,7 +83,7 @@ npm run dist:portable
 
 ```powershell
 npm run check
-npm run test:quarantine
+npm test
 ```
 
 3. Gere os artefatos:
@@ -95,16 +95,16 @@ npm run dist
 4. Crie e envie a tag:
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 5. Anexe estes arquivos de `release/` na release do GitHub:
 
-- `DiskSnoop-Setup-1.0.0-x64.exe`
-- `DiskSnoop-Setup-1.0.0-x64.exe.blockmap`
+- `DiskSnoop-Setup-1.1.0-x64.exe`
+- `DiskSnoop-Setup-1.1.0-x64.exe.blockmap`
 - `latest.yml`
-- `DiskSnoop-Portable-1.0.0-x64.exe`
+- `DiskSnoop-Portable-1.1.0-x64.exe`
 
 O instalador usa `latest.yml` e o `.blockmap` para o auto-update. O portable usa a aba Atualização como fluxo assistido.
 
@@ -112,11 +112,6 @@ O instalador usa `latest.yml` e o `.blockmap` para o auto-update. O portable usa
 
 A aba Atualização consulta as releases publicadas em `Fish7w7/DiskSnoop`, ignora drafts, respeita o canal Estável/Beta e compara versões usando semver. No build portable, o fluxo é assistido: o usuário revisa o changelog, baixa o artefato e decide quando executar a nova versão.
 
-No canal instalado, o DiskSnoop usa `electron-updater`. Ele verifica update, baixa pelo instalador, mostra progresso e só chama reinício depois de confirmação explícita.
+No canal instalado, o DiskSnoop usa `electron-updater`. Ele verifica update, baixa automaticamente pelo instalador quando o usuário mantém essa preferência ativa, mostra progresso e só chama reinício depois de confirmação explícita. Quem preferir pode ativar o modo manual nas preferências.
 
 O DiskSnoop não reinicia sozinho, não atualiza durante scan ativo e bloqueia download enquanto uma ação de quarentena está em andamento. Configurações, histórico, snapshots e quarentena ficam na pasta local do usuário e não são apagados pelo update.
-
-## Roadmap
-
-- `1.0` — primeira versão estável: scanner real, quarentena, histórico, temas, update assistido no portable e auto-update no instalador.
-- `1.x` — melhorias incrementais: relatórios, regras personalizadas, instalador assinado e melhorias de detecção.

@@ -3,7 +3,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.0.0";
+let APP_VERSION_LABEL = "1.1.0";
 
 const state = {
   screen: "welcome",
@@ -71,16 +71,16 @@ const state = {
 let lastRenderedTab = null;
 
 const tabs = [
-  ["overview", "Visão Geral", "home"],
-  ["folders", "Pastas Grandes", "folder"],
-  ["files", "Arquivos Grandes", "file"],
-  ["candidates", "Candidatos", "clipboard"],
-  ["duplicates", "Duplicados", "copy"],
-  ["leftovers", "Sobras de Apps", "cube"],
-  ["quarantine", "Quarentena", "shield"],
-  ["history", "Histórico", "clock"],
-  ["updates", "Atualização", "download"],
-  ["settings", "Configurações", "settings"]
+  ["overview", "nav.overview", "home"],
+  ["folders", "nav.folders", "folder"],
+  ["files", "nav.files", "file"],
+  ["candidates", "nav.candidates", "clipboard"],
+  ["duplicates", "nav.duplicates", "copy"],
+  ["leftovers", "nav.leftovers", "cube"],
+  ["quarantine", "nav.quarantine", "shield"],
+  ["history", "nav.history", "clock"],
+  ["updates", "nav.updates", "download"],
+  ["settings", "nav.settings", "settings"]
 ];
 
 const themeLabels = {
@@ -92,17 +92,23 @@ const themeLabels = {
 };
 
 const availableThemes = ["Claro", "Escuro"];
+const languageOptions = [
+  ["Português (Brasil)", "pt-BR"],
+  ["English", "en-US"]
+];
+const languageLabels = Object.fromEntries(languageOptions.map(([label, value]) => [value, label]));
 
 function normalizeTheme(settings) {
   const normalized = { ...(settings || {}) };
   if (normalized.theme === "black") normalized.theme = "dark";
   if (!themeLabels[normalized.theme]) normalized.theme = "light";
+  if (!languageLabels[normalized.language]) normalized.language = "pt-BR";
   normalized.ignoredPaths = Array.isArray(normalized.ignoredPaths) ? normalized.ignoredPaths : [];
   normalized.includedPaths = Array.isArray(normalized.includedPaths) ? normalized.includedPaths : [];
   if (normalized.verifyDuplicateHashes === undefined) normalized.verifyDuplicateHashes = true;
   normalized.update = {
     checkOnStartup: true,
-    autoDownload: false,
+    autoDownload: true,
     includeBeta: false,
     preferManual: false,
     ignoredVersion: "",
@@ -158,6 +164,67 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function currentLanguage() {
+  return languageLabels[state.settings?.language] ? state.settings.language : "pt-BR";
+}
+
+function storedLanguage() {
+  try {
+    const language = localStorage.getItem("disksnoop-language");
+    return languageLabels[language] ? language : "pt-BR";
+  } catch {
+    return "pt-BR";
+  }
+}
+
+function rememberLanguage(language = currentLanguage()) {
+  try { localStorage.setItem("disksnoop-language", languageLabels[language] ? language : "pt-BR"); } catch {}
+}
+
+function setBootStep(step) {
+  const language = state.settings ? currentLanguage() : storedLanguage();
+  if (state.settings) rememberLanguage(language);
+  window.diskSnoopBoot?.setLanguage?.(language);
+  window.diskSnoopBoot?.setStep?.(step);
+}
+
+function t(key, values = {}) {
+  const i18n = window.diskSnoopI18n;
+  if (!i18n?.translate) return key;
+  return i18n.translate(currentLanguage(), key, values);
+}
+
+function applyRenderedTranslations(root) {
+  const i18n = window.diskSnoopI18n;
+  const language = currentLanguage();
+  if (language === "pt-BR" || !i18n?.translateRenderedText || !root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const original = node.nodeValue || "";
+    const trimmed = original.trim();
+    if (!trimmed) continue;
+    const translated = i18n.translateRenderedText(language, trimmed);
+    if (!translated) continue;
+    const leading = original.match(/^\s*/)?.[0] || "";
+    const trailing = original.match(/\s*$/)?.[0] || "";
+    node.nodeValue = `${leading}${translated}${trailing}`;
+  }
+  root.querySelectorAll?.("input[placeholder], textarea[placeholder]").forEach((field) => {
+    const translated = i18n.translatePlaceholder?.(language, field.getAttribute("placeholder"));
+    if (translated) field.setAttribute("placeholder", translated);
+  });
+  root.querySelectorAll?.("[title]").forEach((element) => {
+    const translated = i18n.translateRenderedText?.(language, element.getAttribute("title"));
+    if (translated) element.setAttribute("title", translated);
+  });
+}
+
+function formatCount(value) {
+  return Number(value || 0).toLocaleString(currentLanguage());
+}
+
 function formatBytes(bytes = 0) {
   if (!Number.isFinite(Number(bytes)) || !bytes) return "0 B";
   const sign = bytes < 0 ? "-" : "";
@@ -181,6 +248,13 @@ function relativeDate(value) {
   const date = new Date(value);
   const diff = Date.now() - date.getTime();
   const days = Math.max(0, Math.round(diff / 86400000));
+  if (currentLanguage() === "en-US") {
+    if (days === 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 60) return `${days} days`;
+    if (days < 730) return days >= 365 ? "1 year" : `${Math.round(days / 30)} months`;
+    return `${Math.round(days / 365)} years`;
+  }
   if (days === 0) return "hoje";
   if (days === 1) return "ontem";
   if (days < 60) return `${days} dias`;
@@ -190,12 +264,12 @@ function relativeDate(value) {
 
 function fullDate(value) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat(currentLanguage(), { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function updateDate(value) {
-  if (!value) return "Ainda não verificado";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  if (!value) return currentLanguage() === "en-US" ? "Not checked yet" : "Ainda não verificado";
+  return new Intl.DateTimeFormat(currentLanguage(), { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function durationLabel(ms) {
@@ -212,16 +286,16 @@ function durationLabel(ms) {
 
 function updateStatusMeta(status) {
   const map = {
-    idle: ["Aguardando verificação", "neutral"],
-    checking: ["Verificando atualização", "info"],
-    "up-to-date": ["Atualizado", "success"],
-    available: ["Nova versão disponível", "warning"],
-    downloading: ["Baixando atualização", "info"],
-    downloaded: ["Atualização baixada", "success"],
-    "restart-required": ["Reinício necessário", "warning"],
-    error: ["Erro ao verificar", "danger"],
-    offline: ["Offline", "neutral"],
-    ignored: ["Versão ignorada", "neutral"]
+    idle: [t("status.idle"), "neutral"],
+    checking: [t("status.checking"), "info"],
+    "up-to-date": [t("status.upToDate"), "success"],
+    available: [t("status.available"), "warning"],
+    downloading: [t("status.downloading"), "info"],
+    downloaded: [t("status.downloaded"), "success"],
+    "restart-required": [t("status.restartRequired"), "warning"],
+    error: [t("status.error"), "danger"],
+    offline: [t("status.offline"), "neutral"],
+    ignored: [t("status.ignored"), "neutral"]
   };
   const [label, kind] = map[status] || map.idle;
   return { label, kind };
@@ -264,6 +338,33 @@ function updateChangelogSections(body) {
   }));
 }
 
+function localChangelogSections(version) {
+  const entries = window.diskSnoopLocalChangelog || {};
+  const versionEntry = entries[String(version || APP_VERSION_LABEL)] || entries[APP_VERSION_LABEL];
+  const entry = versionEntry?.[currentLanguage()] || versionEntry?.["pt-BR"] || versionEntry;
+  if (!entry || !Array.isArray(entry.sections)) return [];
+  return entry.sections
+    .filter((section) => section?.title && Array.isArray(section.items) && section.items.length)
+    .slice(0, 6)
+    .map((section) => ({
+      title: section.title,
+      items: section.items.filter(Boolean).slice(0, 8)
+    }));
+}
+
+function localizedUpdateChannel(value) {
+  return value === "Estável" ? t("updates.channelStable") : value || t("updates.channelStable");
+}
+
+function localizedBuildMode(value) {
+  const map = {
+    Desenvolvimento: "updates.buildDevelopment",
+    Portable: "updates.buildPortable",
+    Instalado: "updates.buildInstalled"
+  };
+  return map[value] ? t(map[value]) : value || t("updates.buildDevelopment");
+}
+
 function usedPercent(drive) {
   return drive?.total ? Math.round((drive.used / drive.total) * 100) : 0;
 }
@@ -298,6 +399,7 @@ function applyTheme() {
   const theme = state.settings?.theme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("disksnoop-theme", theme); } catch {}
+  rememberLanguage();
 }
 
 function setToast(message) {
@@ -474,21 +576,21 @@ function selectedCandidateItems() {
 
 function shellTopRight() {
   if (state.screen === "welcome" || state.screen === "disks") return "";
-  if (state.screen === "scanning") return `<button class="primary" data-action="cancel-scan">Cancelar</button>`;
-  if (state.tab === "candidates") return `<button class="primary" data-action="quarantine-selected" ${selectedCandidateItems().length ? "" : "disabled"}>Mover selecionados</button>`;
-  if (state.tab === "quarantine") return `<div class="top-stat">Protegido em quarentena: <strong>${compactBytes(totalQuarantined())}</strong></div>`;
+  if (state.screen === "scanning") return `<button class="primary" data-action="cancel-scan">${t("top.cancelScan")}</button>`;
+  if (state.tab === "candidates") return `<button class="primary" data-action="quarantine-selected" ${selectedCandidateItems().length ? "" : "disabled"}>${t("top.moveSelected")}</button>`;
+  if (state.tab === "quarantine") return `<div class="top-stat">${t("top.quarantineProtected")} <strong>${compactBytes(totalQuarantined())}</strong></div>`;
   if (state.tab === "settings") return "";
   return `
     <div class="select-shell">
       <select data-action="drive-select">${state.drives.map((drive) => `<option value="${escapeHtml(drive.letter)}" ${state.selectedDrive?.letter === drive.letter ? "selected" : ""}>[${escapeHtml(drive.letter.replace(":", ""))}]</option>`).join("")}</select>
       ${icon("chevron")}
     </div>
-    <button class="primary" data-action="new-scan">${state.scanResult ? "Novo scan" : "Escanear agora"}</button>
+    <button class="primary" data-action="new-scan">${state.scanResult ? t("top.newScan") : t("top.scanNow")}</button>
   `;
 }
 
 function appHeader() {
-  const themeText = state.tab === "settings" ? `Tema: ${themeLabels[state.settings?.theme] || "Claro"}` : "";
+  const themeText = state.tab === "settings" ? t("top.theme", { theme: themeLabels[state.settings?.theme] || "Claro" }) : "";
   return `
     <header class="app-header">
       <div class="app-brand">
@@ -520,10 +622,10 @@ function sidebar() {
   return `
     <aside class="sidebar">
       <nav class="side-nav">
-        ${tabs.map(([id, label, iconName]) => `
+        ${tabs.map(([id, labelKey, iconName]) => `
           <button class="nav-item ${state.tab === id ? "active" : ""}" data-action="tab" data-tab="${id}">
             ${icon(iconName)}
-            <span>${label}</span>
+            <span>${escapeHtml(t(labelKey))}</span>
             ${id === "updates" && updateBadge() ? `<em class="nav-badge">${escapeHtml(updateBadge())}</em>` : ""}
           </button>
         `).join("")}
@@ -531,8 +633,8 @@ function sidebar() {
       <section class="sidebar-info">
         <div class="sidebar-info-copy">
           <strong>DiskSnoop</strong>
-          <span>Versão v${APP_VERSION_LABEL}</span>
-          <p>Feito para ajudar você a recuperar espaço.</p>
+          <span>${escapeHtml(t("sidebar.version", { version: APP_VERSION_LABEL }))}</span>
+          <p>${escapeHtml(t("sidebar.tagline"))}</p>
         </div>
         <span class="sidebar-info-icon" aria-hidden="true">${icon("database")}</span>
       </section>
@@ -553,15 +655,15 @@ function welcomeScreen() {
               ${appLogo("big")}
               <div class="welcome-logo-ring"></div>
             </div>
-            <h1 class="welcome-title">Descubra onde seu<br>espaço foi parar</h1>
-            <p class="welcome-sub">O DiskSnoop analisa seus discos, encontra pastas pesadas, caches,<br>arquivos esquecidos e sobras de aplicativos.</p>
+            <h1 class="welcome-title">${escapeHtml(t("welcome.titleLine1"))}<br>${escapeHtml(t("welcome.titleLine2"))}</h1>
+            <p class="welcome-sub">${escapeHtml(t("welcome.subtitle"))}</p>
             <div class="welcome-actions">
               <button class="primary large" data-action="show-disks">
-                ${icon("search")} Começar análise
+                ${icon("search")} ${escapeHtml(t("welcome.start"))}
               </button>
               <div class="welcome-safe-badge">
                 ${icon("shield")}
-                Nada é apagado automaticamente — você revisa tudo antes
+                ${escapeHtml(t("welcome.safeBadge"))}
               </div>
             </div>
           </div>
@@ -571,22 +673,22 @@ function welcomeScreen() {
               <div class="wf-icon">
                 ${icon("folder")}
               </div>
-              <h3>Pastas pesadas</h3>
-              <p>Ranking das pastas que mais consomem espaço, com detalhamento por subpasta.</p>
+              <h3>${escapeHtml(t("welcome.largeFoldersTitle"))}</h3>
+              <p>${escapeHtml(t("welcome.largeFoldersText"))}</p>
             </div>
             <div class="welcome-feature-card">
               <div class="wf-icon">
                 ${icon("clipboard")}
               </div>
-              <h3>Candidatos a limpeza</h3>
-              <p>node_modules, caches de build, instaladores antigos, downloads esquecidos e logs.</p>
+              <h3>${escapeHtml(t("welcome.cleanupTitle"))}</h3>
+              <p>${escapeHtml(t("welcome.cleanupText"))}</p>
             </div>
             <div class="welcome-feature-card">
               <div class="wf-icon">
                 ${icon("shield")}
               </div>
-              <h3>Quarentena segura</h3>
-              <p>Mova itens para quarentena antes de excluir. Restauração com um clique quando precisar.</p>
+              <h3>${escapeHtml(t("welcome.quarantineTitle"))}</h3>
+              <p>${escapeHtml(t("welcome.quarantineText"))}</p>
             </div>
           </div>
         </div>
@@ -610,12 +712,12 @@ function disksScreen() {
       <main class="disk-page">
         <div class="disk-heading">
           <div class="page-heading">
-            <h1>Escolha um disco</h1>
-            <p>${urgent ? `Sugestão: analisar ${escapeHtml(urgent.letter)} primeiro. ${compactBytes(urgent.free)} livres de ${compactBytes(urgent.total)}.` : "Nenhum disco encontrado."}</p>
+            <h1>${escapeHtml(t("disks.title"))}</h1>
+            <p>${urgent ? escapeHtml(t("disks.suggestion", { drive: urgent.letter, free: compactBytes(urgent.free), total: compactBytes(urgent.total) })) : escapeHtml(t("disks.none"))}</p>
           </div>
           <div class="button-row">
-            ${hasCachedScan ? `<button class="secondary" data-action="load-cached-scan">Último scan</button>` : ""}
-            ${state.isPackaged ? "" : `<button class="secondary" data-action="load-test-scan">Bypass teste</button>`}
+            ${hasCachedScan ? `<button class="secondary" data-action="load-cached-scan">${escapeHtml(t("disks.lastScan"))}</button>` : ""}
+            ${state.isPackaged ? "" : `<button class="secondary" data-action="load-test-scan">${escapeHtml(t("disks.testBypass"))}</button>`}
           </div>
         </div>
         <section class="drive-grid">
@@ -630,25 +732,25 @@ function disksScreen() {
                   <span class="drive-top-icon">${icon("disk")}</span>
                   <div class="drive-top-info">
                     <h2>${escapeHtml(normalizeMediaType(drive.type))} ${escapeHtml(drive.letter)}</h2>
-                    <p>${escapeHtml(drive.name || "Disco local")}</p>
-                    ${isPriority ? `<p class="priority-copy">Prioridade alta</p>` : ""}
+                    <p>${escapeHtml(drive.name || t("disks.localDisk"))}</p>
+                    ${isPriority ? `<p class="priority-copy">${escapeHtml(t("disks.highPriority"))}</p>` : ""}
                   </div>
                   ${badge(status.label, status.className)}
                 </div>
                 <div class="drive-divider"></div>
                 <div class="drive-space">
-                  <span>${compactBytes(drive.used)} usados de ${compactBytes(drive.total)}</span>
+                  <span>${escapeHtml(t("disks.usedOf", { used: compactBytes(drive.used), total: compactBytes(drive.total) }))}</span>
                   <span class="drive-space-pct">${pct}%</span>
                 </div>
                 <div class="drive-bar-wrap">
                   <div class="drive-bar-fill ${barClass}" style="width:${pct}%"></div>
                 </div>
                 <div class="drive-numbers">
-                  <span>Total<b>${formatBytes(drive.total)}</b></span>
-                  <span>Usado<b>${formatBytes(drive.used)}</b></span>
-                  <span>Livre<b>${formatBytes(drive.free)}</b></span>
+                  <span>${escapeHtml(t("disks.total"))}<b>${formatBytes(drive.total)}</b></span>
+                  <span>${escapeHtml(t("disks.used"))}<b>${formatBytes(drive.used)}</b></span>
+                  <span>${escapeHtml(t("disks.free"))}<b>${formatBytes(drive.free)}</b></span>
                 </div>
-                <button class="primary wide" data-action="start-scan" data-drive="${escapeHtml(drive.letter)}">Analisar ${escapeHtml(drive.letter)}</button>
+                <button class="primary wide" data-action="start-scan" data-drive="${escapeHtml(drive.letter)}">${escapeHtml(t("disks.analyze", { drive: drive.letter }))}</button>
               </article>
             `;
           }).join("")}
@@ -665,18 +767,18 @@ function scanningScreen() {
       ${appHeader()}
       <main class="scan-page">
         <section class="scan-card">
-          <h1>Escaneando ${escapeHtml(state.selectedDrive?.letter || "")}</h1>
-          <p>${escapeHtml(progress.currentPath || "Preparando análise...")}</p>
+          <h1>${escapeHtml(t("scan.title", { drive: state.selectedDrive?.letter || "" }))}</h1>
+          <p>${escapeHtml(progress.currentPath || t("scan.preparing"))}</p>
           ${progressBar(progress.progress || 0)}
           <div class="scan-grid">
-            <div><span>Arquivos</span><strong>${Number(progress.files || 0).toLocaleString("pt-BR")}</strong></div>
-            <div><span>Mapeado</span><strong>${formatBytes(progress.mappedBytes || 0)}</strong></div>
-            <div><span>Candidatos</span><strong>${Number(progress.candidates || 0).toLocaleString("pt-BR")}</strong></div>
-            <div><span>Sem acesso</span><strong>${Number(progress.skipped || 0).toLocaleString("pt-BR")}</strong></div>
+            <div><span>${escapeHtml(t("scan.files"))}</span><strong>${formatCount(progress.files)}</strong></div>
+            <div><span>${escapeHtml(t("scan.mapped"))}</span><strong>${formatBytes(progress.mappedBytes || 0)}</strong></div>
+            <div><span>${escapeHtml(t("scan.candidates"))}</span><strong>${formatCount(progress.candidates)}</strong></div>
+            <div><span>${escapeHtml(t("scan.skipped"))}</span><strong>${formatCount(progress.skipped)}</strong></div>
           </div>
           <div class="button-row">
-            <button class="secondary" data-action="${state.paused ? "resume-scan" : "pause-scan"}">${state.paused ? "Retomar" : "Pausar"}</button>
-            <button class="danger" data-action="cancel-scan">Cancelar</button>
+            <button class="secondary" data-action="${state.paused ? "resume-scan" : "pause-scan"}">${state.paused ? escapeHtml(t("scan.resume")) : escapeHtml(t("scan.pause"))}</button>
+            <button class="danger" data-action="cancel-scan">${escapeHtml(t("scan.cancel"))}</button>
           </div>
         </section>
       </main>
@@ -856,44 +958,44 @@ function overviewTab() {
           <h1>${escapeHtml(normalizeMediaType(drive.type))} ${escapeHtml(drive.letter)}</h1>
           <p>${compactBytes(drive.used)} usados de ${compactBytes(drive.total)}</p>
         </div>
-        <span>${isHistoricalReport ? "Relatório histórico" : "Último scan"}: ${relativeDate(result.finishedAt)}</span>
+        <span>${isHistoricalReport ? escapeHtml(t("overview.historical")) : escapeHtml(t("overview.latest"))}: ${relativeDate(result.finishedAt)}</span>
       </div>
       ${isHistoricalReport ? historicalReportNote() : ""}
 
       <section class="metric-cards">
         <article class="metric-card">
           <span class="metric-icon">${icon("disk")}</span>
-          <div><strong>${compactBytes(reviewable)}</strong><span>Revisáveis</span></div>
+          <div><strong>${compactBytes(reviewable)}</strong><span>${escapeHtml(t("overview.reviewable"))}</span></div>
         </article>
         <article class="metric-card">
           <span class="metric-icon">${icon("file")}</span>
-          <div><strong>${visibleCandidates().length}</strong><span>Encontrados</span></div>
+          <div><strong>${formatCount(visibleCandidates().length)}</strong><span>${escapeHtml(t("overview.found"))}</span></div>
         </article>
         <article class="metric-card">
           <span class="metric-icon">${icon("cube")}</span>
-          <div><strong>${possibleLeftoversCount()} apps?</strong><span>Sobras</span></div>
+          <div><strong>${formatCount(possibleLeftoversCount())} apps?</strong><span>${escapeHtml(t("overview.leftovers"))}</span></div>
         </article>
       </section>
 
-      <h2>Relatório do scan</h2>
+      <h2>${escapeHtml(t("overview.scanReport"))}</h2>
       <section class="panel scan-report">
         <div class="report-grid">
-          <div><span>Finalizado</span><strong>${fullDate(result.finishedAt)}</strong></div>
-          <div><span>Duração</span><strong>${durationLabel(durationMs)}</strong></div>
-          <div><span>Arquivos</span><strong>${Number(result.files || 0).toLocaleString("pt-BR")}</strong></div>
-          <div><span>Pastas</span><strong>${Number(result.directories || 0).toLocaleString("pt-BR")}</strong></div>
-          <div><span>Sem acesso</span><strong>${Number(result.skipped || 0).toLocaleString("pt-BR")}</strong></div>
-          <div><span>Raízes analisadas</span><strong>${scannedRoots}</strong></div>
+          <div><span>${escapeHtml(t("overview.finished"))}</span><strong>${fullDate(result.finishedAt)}</strong></div>
+          <div><span>${escapeHtml(t("overview.duration"))}</span><strong>${durationLabel(durationMs)}</strong></div>
+          <div><span>${escapeHtml(t("overview.files"))}</span><strong>${formatCount(result.files)}</strong></div>
+          <div><span>${escapeHtml(t("overview.folders"))}</span><strong>${formatCount(result.directories)}</strong></div>
+          <div><span>${escapeHtml(t("overview.skipped"))}</span><strong>${formatCount(result.skipped)}</strong></div>
+          <div><span>${escapeHtml(t("overview.roots"))}</span><strong>${formatCount(scannedRoots)}</strong></div>
         </div>
         <div class="report-note">
           ${icon("shield")}
-          <span>Nada foi apagado automaticamente. ${duplicateReviewable ? `${compactBytes(duplicateReviewable)} aparecem como possíveis duplicados e precisam de confirmação manual.` : "Revise candidatos e quarentena antes de qualquer exclusão permanente."}</span>
+          <span>${escapeHtml(t("overview.noAutoDelete"))} ${escapeHtml(duplicateReviewable ? t("overview.duplicatesNeedManual", { size: compactBytes(duplicateReviewable) }) : t("overview.reviewBeforeDelete"))}</span>
         </div>
       </section>
 
-      <h2>Uso por categoria</h2>
+      <h2>${escapeHtml(t("overview.categoryUsage"))}</h2>
       <section class="panel category-panel">
-        ${(top.length ? top : [["Sem candidatos", 0]]).map(([name, size]) => `
+        ${(top.length ? top : [[t("overview.noCandidates"), 0]]).map(([name, size]) => `
           <div class="category-row">
             <span>${escapeHtml(cleanCategory(name))}</span>
             <div class="category-bar">${progressBar(largest ? (size / largest) * 80 : 0)}</div>
@@ -1015,7 +1117,7 @@ function folderDetails(item) {
       <span class="detail-icon">${icon("folder")}</span>
       <div class="detail-copy">
         <h3>${escapeHtml(item.path)}</h3>
-        <p>${escapeHtml(item.reason || "Pasta grande detectada no scan.")}</p>
+        ${reviewCallout("Resumo seguro", item.reason || "Pasta grande detectada no scan.", "folder")}
         ${childrenSummary(item)}
         <div class="detail-actions">
           <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
@@ -1024,6 +1126,19 @@ function folderDetails(item) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function reviewCallout(title, text, iconName = "shield", tone = "info") {
+  if (!text) return "";
+  return `
+    <div class="detail-review-note ${tone === "warning" ? "warning" : ""}">
+      <span>${icon(iconName)}</span>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(text)}</p>
+      </div>
+    </div>
   `;
 }
 
@@ -1135,14 +1250,14 @@ function fileDetails(item) {
           <span>Selo ${safetyBadge(item.security)}</span>
         </div>
       </div>
-      <p>${escapeHtml(item.reason || "Arquivo grande detectado no scan. Revise antes de mover, especialmente se for documento, vídeo ou arquivo pessoal.")}</p>
+      ${reviewCallout("Motivo do achado", item.reason || "Arquivo grande detectado no scan. Revise antes de mover, especialmente se for documento, vídeo ou arquivo pessoal.", "file")}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir local</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
-      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
-      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? reviewCallout("Atenção antes de mover", crossVolumeQuarantineNote(item), "shield", "warning") : ""}
+      ${canQuarantine ? "" : reviewCallout("Atenção antes de mover", blockedQuarantineReason(item), "shield", "warning")}
     </section>
   `;
 }
@@ -1313,7 +1428,7 @@ function candidateDetails(item) {
           <span>Selo ${safetyBadge(item.security)}</span>
         </div>
       </div>
-      <p>${escapeHtml(item.reason || "Este item parece ocupar espaço relevante e merece revisão.")}</p>
+      ${reviewCallout("Motivo do achado", item.reason || "Este item parece ocupar espaço relevante e merece revisão.", "shield")}
       ${childrenSummary(item)}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir</button>
@@ -1321,8 +1436,8 @@ function candidateDetails(item) {
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
-      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
-      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? reviewCallout("Atenção antes de mover", crossVolumeQuarantineNote(item), "shield", "warning") : ""}
+      ${canQuarantine ? "" : reviewCallout("Atenção antes de mover", blockedQuarantineReason(item), "shield", "warning")}
     </section>
   `;
 }
@@ -1477,7 +1592,7 @@ function duplicateDetails(group) {
           </div>
         `).join("")}
       </div>
-      <p class="muted">A primeira linha é apenas a cópia mais recente pelo horário de modificação, não uma decisão de qual arquivo manter. Mesmo com hash confirmado, abra os caminhos quando houver dúvida antes de mover qualquer cópia por outra aba.</p>
+      ${reviewCallout("Como revisar", "A primeira linha é só a cópia mais recente por data de modificação. Mesmo com hash confirmado, abra os caminhos quando houver dúvida antes de mover qualquer cópia.", "shield")}
     </section>
   `;
 }
@@ -1858,49 +1973,97 @@ function updatesTabV1() {
   const status = updateStatusMeta(update.status);
   const settings = state.settings?.update || {};
   const hasAsset = Boolean(update.asset?.url);
-  const changelogSections = updateChangelogSections(update.release?.body);
+  const remoteChangelogSections = updateChangelogSections(update.release?.body);
+  const localChangelogFallback = localChangelogSections(update.currentVersion || APP_VERSION_LABEL);
+  const changelogSections = remoteChangelogSections.length ? remoteChangelogSections : localChangelogFallback;
+  const changelogSource = remoteChangelogSections.length ? "remote" : localChangelogFallback.length ? "local" : "none";
   const isAutoUpdate = update.updateMode === "auto" && update.buildMode === "Instalado";
   const isAssisted = !isAutoUpdate || settings.preferManual;
   const canDownloadUpdate = isAutoUpdate || hasAsset;
   const buildMode = update.buildMode || state.appPaths?.buildMode || "Desconhecido";
+  const isDevelopmentBuild = buildMode === "Desenvolvimento" || buildMode === "Development";
   const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
-  const updateEngine = isAutoUpdate
-    ? "electron-updater ativo"
+  const modeLabel = isAutoUpdate
+    ? t("updates.autoMode")
     : buildMode === "Instalado" && settings.preferManual
-      ? "Manual por preferência"
-      : buildMode === "Instalado" && update.autoUpdaterAvailable === false
-        ? "electron-updater ausente"
-        : "Update assistido";
-  const releaseRequirement = buildMode === "Instalado" && !settings.preferManual
-    ? "Setup .exe, .blockmap e latest.yml no GitHub Release"
-    : "Artefato Windows publicado no GitHub Releases";
+      ? t("updates.manualPreferenceMode")
+      : t("updates.assistedMode");
+  const updateEngine = isDevelopmentBuild
+    ? (isAutoUpdate
+      ? t("updates.engineActive")
+      : buildMode === "Instalado" && settings.preferManual
+        ? t("updates.engineManualPreference")
+        : buildMode === "Instalado" && update.autoUpdaterAvailable === false
+          ? t("updates.engineMissing")
+          : t("updates.engineAssisted"))
+    : "";
+  const releaseRequirement = isDevelopmentBuild
+    ? (buildMode === "Instalado" && !settings.preferManual
+      ? t("updates.expectedInstalled")
+      : t("updates.expectedAssisted"))
+    : "";
+  const diagnosticsNote = isDevelopmentBuild
+    ? (buildMode === "Instalado" && settings.preferManual
+      ? t("updates.manualNote")
+      : settings.includeBeta
+        ? t("updates.betaNote")
+        : "")
+    : "";
+  const appInfoCard = isDevelopmentBuild ? `
+    <article class="panel update-card update-diagnostics">
+      <h2>${escapeHtml(t("updates.diagnosticsTitle"))}</h2>
+      <p>${escapeHtml(t("updates.diagnosticsText"))}</p>
+      <div class="update-diagnostics-grid">
+        <div><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
+        <div><span>${escapeHtml(t("updates.engine"))}</span><strong>${escapeHtml(updateEngine)}</strong></div>
+        <div><span>${escapeHtml(t("updates.expectedRelease"))}</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
+        <div><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
+      </div>
+      ${diagnosticsNote ? `<p class="muted">${escapeHtml(diagnosticsNote)}</p>` : ""}
+      <div class="detail-actions update-actions">
+        <button class="secondary" data-action="open-data-folder">${icon("external")}${t("updates.openData")}</button>
+      </div>
+    </article>
+  ` : `
+    <article class="panel update-card update-diagnostics">
+      <h2>${escapeHtml(t("updates.appInfoTitle"))}</h2>
+      <p>${escapeHtml(t("updates.appInfoText"))}</p>
+      <div class="update-diagnostics-grid compact">
+        <div><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
+        <div><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
+      </div>
+      <div class="detail-actions update-actions">
+        <button class="secondary" data-action="open-data-folder">${icon("external")}${t("updates.openData")}</button>
+      </div>
+    </article>
+  `;
   const actionByState = {
-    idle: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`,
-    checking: `<button class="primary" disabled>${icon("refresh")}Verificando...</button>`,
-    "up-to-date": `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`,
+    idle: `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.checkNow")}</button>`,
+    checking: `<button class="primary" disabled>${icon("refresh")}${t("updates.checking")}</button>`,
+    "up-to-date": `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.checkNow")}</button>`,
     available: `
-      <button class="primary" data-action="update-download" ${canDownloadUpdate ? "" : "disabled"}>${icon("download")}Baixar atualização</button>
-      <button class="secondary" data-action="update-remind">${icon("clock")}Lembrar depois</button>
-      <button class="secondary" data-action="update-ignore">${icon("ban")}Ignorar esta versão</button>
+      <button class="primary" data-action="update-download" ${canDownloadUpdate ? "" : "disabled"}>${icon("download")}${t("updates.download")}</button>
+      <button class="secondary" data-action="update-remind">${icon("clock")}${t("updates.remind")}</button>
+      <button class="secondary" data-action="update-ignore">${icon("ban")}${t("updates.ignore")}</button>
     `,
-    downloading: `<button class="primary" disabled>${icon("download")}Baixando ${Math.round(update.progress || 0)}%</button>`,
+    downloading: `<button class="primary" disabled>${icon("download")}${t("updates.downloading", { progress: Math.round(update.progress || 0) })}</button>`,
     downloaded: `
-      <button class="primary" data-action="update-open-downloaded">${icon("external")}Abrir arquivo baixado</button>
-      <button class="secondary" data-action="update-show-downloaded">${icon("folder")}Mostrar na pasta</button>
-      <button class="secondary" disabled>${icon("refresh")}Reinício automático indisponível no portable</button>
+      <button class="primary" data-action="update-open-downloaded">${icon("external")}${t("updates.openDownloaded")}</button>
+      <button class="secondary" data-action="update-show-downloaded">${icon("folder")}${t("updates.showInFolder")}</button>
+      <button class="secondary" disabled>${icon("refresh")}${t("updates.restartUnavailablePortable")}</button>
     `,
-    "restart-required": `<button class="primary" data-action="update-install-restart">${icon("refresh")}Reiniciar para atualizar</button>`,
-    error: `<button class="primary" data-action="update-check">${icon("refresh")}Tentar novamente</button>`,
-    offline: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar novamente</button>`,
-    ignored: `<button class="primary" data-action="update-check">${icon("refresh")}Verificar agora</button>`
+    "restart-required": `<button class="primary" data-action="update-install-restart">${icon("refresh")}${t("updates.restart")}</button>`,
+    error: `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.retry")}</button>`,
+    offline: `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.checkAgain")}</button>`,
+    ignored: `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.checkNow")}</button>`
   };
   return `
     <section>
       <div class="page-heading update-heading">
         <span class="page-heading-icon">${icon("download")}</span>
         <div>
-          <h1>Atualização</h1>
-          <p>Gerencie versões, novidades e atualizações do DiskSnoop.</p>
+          <h1>${escapeHtml(t("updates.title"))}</h1>
+          <p>${escapeHtml(t("updates.subtitle"))}</p>
         </div>
       </div>
 
@@ -1910,57 +2073,46 @@ function updatesTabV1() {
             <span class="update-hero-icon">${icon("download")}</span>
             <div>
               <span class="status-pill ${status.kind}">${escapeHtml(status.label)}</span>
-              <h2>${update.status === "available" ? `DiskSnoop ${escapeHtml(update.latestVersion)}` : "DiskSnoop estável e seguro"}</h2>
+              <h2>${update.status === "available" ? `DiskSnoop ${escapeHtml(update.latestVersion)}` : escapeHtml(t("updates.safeTitle"))}</h2>
               <p>${update.status === "available"
-                ? "Existe uma versão mais nova. Revise as notas antes de baixar."
+                ? escapeHtml(t("updates.availableText"))
                 : update.status === "downloaded"
-                  ? "O arquivo foi baixado. Como este canal é portable, abra o instalador/arquivo manualmente."
+                  ? escapeHtml(t("updates.downloadedText"))
                   : update.status === "restart-required"
-                    ? "A atualização foi baixada pelo instalador. O DiskSnoop só reinicia quando você confirmar."
+                    ? escapeHtml(t("updates.restartText"))
                   : update.error
                     ? escapeHtml(update.error)
-                    : "O app pode verificar novas versões sem interromper seu trabalho."}</p>
+                    : escapeHtml(t("updates.defaultText"))}</p>
             </div>
           </div>
           <div class="update-status-grid">
-            <div><span>Versão instalada</span><strong>${escapeHtml(update.currentVersion || APP_VERSION_LABEL)}</strong></div>
-            <div><span>Última versão disponível</span><strong>${escapeHtml(update.latestVersion || "-")}</strong></div>
-            <div><span>Última verificação</span><strong>${escapeHtml(updateDate(update.lastCheckAt))}</strong></div>
-            <div><span>Canal atual</span><strong>${escapeHtml(update.channel || "Beta")}</strong></div>
-            <div><span>Modo de atualização</span><strong>${isAutoUpdate ? "Instalador automático" : "Assistido"}</strong></div>
-            <div><span>Artefato Windows</span><strong>${escapeHtml(isAutoUpdate ? "Gerenciado pelo instalador" : (update.asset?.name || "Não selecionado"))}</strong></div>
+            <div><span>${escapeHtml(t("updates.installedVersion"))}</span><strong>${escapeHtml(update.currentVersion || APP_VERSION_LABEL)}</strong></div>
+            <div><span>${escapeHtml(t("updates.latestVersion"))}</span><strong>${escapeHtml(update.latestVersion || t("common.notAvailable"))}</strong></div>
+            <div><span>${escapeHtml(t("updates.lastCheck"))}</span><strong>${escapeHtml(updateDate(update.lastCheckAt))}</strong></div>
+            <div><span>${escapeHtml(t("updates.channel"))}</span><strong>${escapeHtml(localizedUpdateChannel(update.channel))}</strong></div>
+            <div><span>${escapeHtml(t("updates.mode"))}</span><strong>${escapeHtml(modeLabel)}</strong></div>
+            <div><span>${escapeHtml(t("updates.artifact"))}</span><strong>${escapeHtml(isAutoUpdate ? t("updates.installerManaged") : (update.asset?.name || t("updates.notSelected")))}</strong></div>
           </div>
         </article>
 
         <article class="panel update-card">
-          <h2>Ações</h2>
+          <h2>${escapeHtml(t("updates.actions"))}</h2>
           <p>${isAssisted
-            ? "No build portable, o DiskSnoop verifica e baixa a nova versão, mas não substitui o executável aberto. Use o arquivo baixado ou a página de releases para atualizar manualmente."
-            : "No canal instalado, o DiskSnoop baixa a atualização pelo instalador e só reinicia para aplicar depois da sua confirmação."}</p>
+            ? escapeHtml(t("updates.assistedText"))
+            : escapeHtml(t("updates.autoText"))}</p>
           ${update.status === "downloading" ? `<div class="update-progress">${progressBar(update.progress || 0)}<span>${Math.round(update.progress || 0)}%</span></div>` : ""}
           <div class="detail-actions update-actions">
             ${actionByState[update.status] || actionByState.idle}
-            <button class="secondary" data-action="update-open-releases">${icon("external")}Abrir releases</button>
-            ${update.release?.url ? `<button class="secondary" data-action="update-open-release">${icon("list")}Página desta versão</button>` : ""}
+            <button class="secondary" data-action="update-open-releases">${icon("external")}${t("updates.openReleases")}</button>
+            ${update.release?.url ? `<button class="secondary" data-action="update-open-release">${icon("list")}${t("updates.openThisRelease")}</button>` : ""}
           </div>
         </article>
 
-        <article class="panel update-card update-diagnostics">
-          <h2>Diagnóstico da instalação</h2>
-          <p>Use este bloco para conferir se a release publicada combina com o tipo de app em execução.</p>
-          <div class="update-diagnostics-grid">
-            <div><span>Modo do app</span><strong>${escapeHtml(buildMode)}</strong></div>
-            <div><span>Motor de update</span><strong>${escapeHtml(updateEngine)}</strong></div>
-            <div><span>Release esperada</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
-            <div><span>Dados locais</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
-          </div>
-          <div class="detail-actions update-actions">
-            <button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button>
-          </div>
-        </article>
+        ${appInfoCard}
 
         <article class="panel update-card">
-          <h2>Changelog</h2>
+          <h2>${escapeHtml(t("updates.changelog"))}</h2>
+          ${changelogSource === "local" ? `<p class="muted">${escapeHtml(t("updates.localChangelog"))}</p>` : ""}
           ${changelogSections.length ? `
             <div class="update-changelog">
               ${changelogSections.map((section) => `
@@ -1970,19 +2122,19 @@ function updatesTabV1() {
                 </section>
               `).join("")}
             </div>
-          ` : `<p class="muted">Nenhum changelog disponível ainda. Se existir uma release publicada, você ainda pode abrir a página de releases para revisar manualmente.</p>`}
+          ` : `<p class="muted">${escapeHtml(t("updates.noChangelog"))}</p>`}
         </article>
 
         <article class="panel update-card">
-          <h2>Preferências</h2>
+          <h2>${escapeHtml(t("updates.preferences"))}</h2>
           <div class="update-preferences">
-            <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> Verificar atualização ao abrir</label>
-            <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> Participar de versões beta</label>
-            <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> Preferir update manual mesmo no instalador</label>
-            <label class="disabled"><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload ? "checked" : ""} disabled> Baixar automaticamente em segundo plano <span>O DiskSnoop sempre pede confirmação antes de baixar</span></label>
+            <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> ${escapeHtml(t("updates.prefCheckStartup"))}</label>
+            <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> ${escapeHtml(t("updates.prefBeta"))}</label>
+            <label><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload === false ? "" : "checked"} ${settings.preferManual ? "disabled" : ""}> ${escapeHtml(t("updates.prefAutoDownload"))} <span>${escapeHtml(t("updates.prefAutoDownloadHelp"))}</span></label>
+            <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> ${escapeHtml(t("updates.prefManual"))}</label>
           </div>
-          ${update.ignoredVersion ? `<p class="muted">Versão ignorada: ${escapeHtml(update.ignoredVersion)}. Verificar manualmente busca novamente e mostra versões futuras.</p>` : ""}
-          ${update.remindAfter ? `<p class="muted">Lembrete adiado até ${escapeHtml(updateDate(update.remindAfter))}.</p>` : ""}
+          ${update.ignoredVersion ? `<p class="muted">${escapeHtml(t("updates.ignored", { version: update.ignoredVersion }))}</p>` : ""}
+          ${update.remindAfter ? `<p class="muted">${escapeHtml(t("updates.reminder", { date: updateDate(update.remindAfter) }))}</p>` : ""}
         </article>
       </section>
     </section>
@@ -2000,17 +2152,26 @@ function settingsTab() {
   return `
     <section>
       <div class="page-heading">
-        <h1>Configurações</h1>
-        <p>Ajuste como o DiskSnoop analisa e protege arquivos</p>
+        <h1>${escapeHtml(t("settings.title"))}</h1>
+        <p>${escapeHtml(t("settings.subtitle"))}</p>
       </div>
 
-      <h2>Aparência</h2>
+      <h2>${escapeHtml(t("settings.appearance"))}</h2>
       <section class="panel settings-card">
         <div>
-          <p>Tema atual</p>
-          <span>Temas disponíveis agora: Claro e Escuro. A estrutura de tokens já está pronta para novos temas.</span>
+          <p>${escapeHtml(t("settings.currentTheme"))}</p>
+          <span>${escapeHtml(t("settings.themeHelp"))}</span>
         </div>
         ${selectControl("theme", availableThemes, themeLabels[state.settings.theme] || "Claro")}
+      </section>
+
+      <h2>${escapeHtml(t("settings.language"))}</h2>
+      <section class="panel settings-card">
+        <div>
+          <p>${escapeHtml(t("settings.languageLabel"))}</p>
+          <span>${escapeHtml(t("settings.languageHelp"))}</span>
+        </div>
+        ${selectControl("language", languageOptions, state.settings.language || "pt-BR")}
       </section>
 
       <h2>Limites do scan</h2>
@@ -2045,7 +2206,7 @@ function settingsTab() {
           <button class="secondary" data-action="open-quarantine">${icon("external")}Abrir quarentena</button>
           <button class="secondary" data-action="reset-quarantine-path">${icon("reset")}Usar padrão</button>
         </div>
-        <span>Para mover pastas grandes, prefira uma quarentena no mesmo disco do item. A versão 1.0 pode bloquear pastas entre discos para evitar cópia parcial seguida de remoção.</span>
+        <span>Para mover pastas grandes, prefira uma quarentena no mesmo disco do item. O DiskSnoop pode bloquear pastas entre discos para evitar cópia parcial seguida de remoção.</span>
       </section>
 
       <h2>Escopo do scan</h2>
@@ -2131,6 +2292,7 @@ function checkLine(label, field) {
 
 function render() {
   applyTheme();
+  document.documentElement.lang = currentLanguage();
   const app = $("#app");
   const content = $(".content");
   const shouldRestoreContentScroll = state.screen === "app" && lastRenderedTab === state.tab && content;
@@ -2140,6 +2302,7 @@ function render() {
   if (state.screen === "disks") app.innerHTML = disksScreen();
   if (state.screen === "scanning") app.innerHTML = scanningScreen();
   if (state.screen === "app") app.innerHTML = appShell();
+  applyRenderedTranslations(app);
 
   if (shouldRestoreContentScroll) {
     const nextContent = $(".content");
@@ -2149,10 +2312,12 @@ function render() {
 }
 
 const MIN_BOOT_MS = 900;
+const MIN_READY_BOOT_MS = 420;
 
 async function loadBasics() {
   const bootStart = Date.now();
   try {
+    setBootStep("loading");
     loadHiddenPaths();
     const loadedSettings = normalizeTheme(await api.getSettings());
     state.settings = loadedSettings;
@@ -2164,10 +2329,11 @@ async function loadBasics() {
       api.listHistory(),
       api.appPaths()
     ]);
-
     const elapsed = Date.now() - bootStart;
-    if (elapsed < MIN_BOOT_MS) {
-      await new Promise((resolve) => setTimeout(resolve, MIN_BOOT_MS - elapsed));
+    setBootStep("ready");
+    const readyDelay = Math.max(MIN_BOOT_MS - elapsed, MIN_READY_BOOT_MS);
+    if (readyDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, readyDelay));
     }
 
     state.drives = drives;
@@ -2202,9 +2368,9 @@ async function loadBasics() {
       <main class="boot-screen">
         <section class="boot-card">
           ${appLogo("big")}
-          <h1>Não foi possível iniciar</h1>
-          <p>${escapeHtml(error.message || "Erro ao carregar dados iniciais.")}</p>
-          <button class="primary" data-action="retry-load">Tentar novamente</button>
+          <h1>${escapeHtml(t("boot.startFailed"))}</h1>
+          <p>${escapeHtml(error.message || t("boot.initialDataError"))}</p>
+          <button class="primary" data-action="retry-load">${escapeHtml(t("boot.retry"))}</button>
         </section>
       </main>
     `;
@@ -2534,6 +2700,12 @@ function updateSelectField(target) {
   if (field === "theme") {
     state.settings.theme = Object.entries(themeLabels).find(([, label]) => label === target.value)?.[0] || "light";
     state.settings = normalizeTheme(state.settings);
+    persistSettingsSoon();
+  }
+  if (field === "language") {
+    state.settings.language = languageLabels[target.value] ? target.value : "pt-BR";
+    state.settings = normalizeTheme(state.settings);
+    rememberLanguage(state.settings.language);
     persistSettingsSoon();
   }
   return true;

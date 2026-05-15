@@ -145,19 +145,19 @@ body {
 .boot-card {
   position: relative;
   z-index: 1;
-  width: min(380px, calc(100vw - 48px));
+  width: min(360px, calc(100vw - 48px));
   display: grid;
   justify-items: center;
-  gap: 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   border-radius: 20px;
   background: var(--surface);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
     var(--shadow);
-  padding: 36px 32px 28px;
+  padding: 38px 32px 32px;
   text-align: center;
-  animation: boot-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: boot-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes boot-rise {
@@ -234,38 +234,44 @@ body {
 
 .boot-status {
   color: var(--textMuted);
-  font-size: 13px;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
   min-height: 18px;
-  transition: opacity 0.3s;
+  transition: opacity 0.25s ease;
 }
 
 .boot-loader {
-  width: 200px;
-  height: 4px;
-  overflow: hidden;
+  width: min(200px, 68vw);
+  height: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--border));
   position: relative;
+  overflow: hidden;
 }
 
 .boot-loader span {
-  width: 45%;
-  height: 100%;
-  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 48%;
   border-radius: inherit;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent) 50%, transparent),
-    var(--accent),
-    color-mix(in srgb, var(--accent) 50%, transparent)
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 30%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 70%,
+    transparent 100%
   );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
-  animation: boot-slide 2.6s ease-in-out infinite;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: boot-shimmer 1.65s ease-in-out infinite;
+  will-change: transform;
 }
 
-@keyframes boot-slide {
-  0%   { transform: translateX(-120%); }
-  100% { transform: translateX(280%); }
+@keyframes boot-shimmer {
+  0%   { transform: translateX(-140%); }
+  100% { transform: translateX(320%); }
 }
 
 .boot-meta {
@@ -1697,6 +1703,7 @@ input[type="checkbox"] {
 }
 
 .detail-copy {
+  flex: 1;
   min-width: 0;
 }
 
@@ -1800,7 +1807,7 @@ input[type="checkbox"] {
 }
 
 .duplicate-copy-row.suspect {
-  background: color-mix(in srgb, var(--surface) 88%, var(--warningSoft));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
 }
 
 .duplicate-copy-row span {
@@ -1826,6 +1833,60 @@ input[type="checkbox"] {
 
 .duplicate-copy-row small {
   color: var(--textMuted);
+}
+
+.detail-review-note,
+.duplicate-review-note {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin-top: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accentSoft) 34%, var(--surface));
+  padding: 12px 14px;
+}
+
+.detail-review-note.warning {
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.detail-review-note > span,
+.duplicate-review-note > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.detail-review-note.warning > span {
+  color: var(--warning);
+}
+
+.detail-review-note .icon,
+.duplicate-review-note .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.detail-review-note strong,
+.duplicate-review-note strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+
+.detail-review-note p,
+.duplicate-review-note p {
+  margin: 0;
+  color: var(--textMuted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .detail-actions {
