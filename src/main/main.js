@@ -43,6 +43,20 @@ function dataFile(name) {
   return path.join(app.getPath("userData"), name);
 }
 
+function loadRendererLocale(locale) {
+  try {
+    const safeLocale = locale === "en-US" ? "en-US" : "pt-BR";
+    const filePath = path.join(__dirname, "..", "renderer", "i18n", `${safeLocale}.json`);
+    return JSON.parse(fscb.readFileSync(filePath, "utf8"));
+  } catch {
+    return { messages: {} };
+  }
+}
+
+ipcMain.on("locale:load", (event, locale) => {
+  event.returnValue = loadRendererLocale(locale);
+});
+
 const defaultSettings = {
   settingsVersion: 2,
   theme: "light",

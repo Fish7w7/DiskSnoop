@@ -6,6 +6,11 @@ async function unwrapInvoke(channel, payload) {
   return result?.ok === true ? result.value : result;
 }
 
+contextBridge.exposeInMainWorld("diskSnoopLocaleData", {
+  "pt-BR": ipcRenderer.sendSync("locale:load", "pt-BR"),
+  "en-US": ipcRenderer.sendSync("locale:load", "en-US")
+});
+
 contextBridge.exposeInMainWorld("diskScope", {
   listDrives: () => ipcRenderer.invoke("drives:list"),
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),

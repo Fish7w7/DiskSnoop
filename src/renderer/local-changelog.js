@@ -1,4 +1,68 @@
 window.diskSnoopLocalChangelog = {
+  "1.2.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.2.0",
+      sections: [
+        {
+          title: "Destaques",
+          items: [
+            "Visão geral ganhou Assistente de revisão, ganho seguro e etapas para priorizar candidatos, duplicados e sobras de apps.",
+            "Cards de revisão foram reescritos com mensagens mais claras sobre motivo do achado, o que conferir e quando mover para quarentena.",
+            "Configurações ganhou sugestões de ignorados para itens gerados por projetos, caches detectados e downloads antigos.",
+            "A área de Ignorados foi redesenhada com cards mais simples, sem ícones decorativos problemáticos."
+          ]
+        },
+        {
+          title: "Polimento",
+          items: [
+            "Tabelas e detalhes foram ajustados para funcionar melhor em janelas menores.",
+            "Badges de confiança foram adicionadas em candidatos, arquivos grandes, duplicados e sobras de apps.",
+            "Seleção acidental de textos da interface foi desativada, mantendo campos editáveis selecionáveis.",
+            "Mensagens longas em Português e Inglês foram revisadas para caber melhor nos cards."
+          ]
+        },
+        {
+          title: "Internacionalização",
+          items: [
+            "Textos principais foram migrados para JSONs de idioma com chaves estáveis.",
+            "O motor de i18n continua compatível com a camada antiga de tradução de textos já renderizados.",
+            "Carregamento de idiomas no Electron foi movido para um fluxo seguro via processo principal para evitar travamento na tela inicial."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.2.0",
+      sections: [
+        {
+          title: "Highlights",
+          items: [
+            "Overview now includes a review assistant, safe gain, and steps to prioritize candidates, duplicates, and app leftovers.",
+            "Review cards were rewritten with clearer messages about why an item was found, what to check, and when to move it to quarantine.",
+            "Settings now includes ignored-path suggestions for project-generated items, detected caches, and old downloads.",
+            "The Ignored area was redesigned with simpler cards and without problematic decorative icons."
+          ]
+        },
+        {
+          title: "Polish",
+          items: [
+            "Tables and detail panels were adjusted to work better in smaller windows.",
+            "Confidence badges were added to candidates, large files, duplicates, and app leftovers.",
+            "Accidental selection of interface text is disabled while editable fields remain selectable.",
+            "Long Portuguese and English messages were reviewed to fit better inside cards."
+          ]
+        },
+        {
+          title: "Internationalization",
+          items: [
+            "Main UI strings were moved into language JSON files with stable keys.",
+            "The i18n engine remains compatible with the legacy already-rendered text translation layer.",
+            "Electron language loading now goes through the main process to avoid startup freezes on the boot screen."
+          ]
+        }
+      ]
+    }
+  },
   "1.1.0": {
     "pt-BR": {
       title: "DiskSnoop 1.1.0",

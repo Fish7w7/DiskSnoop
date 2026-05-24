@@ -10,8 +10,8 @@
 
 | Tipo | Link |
 |------|------|
-| 🖥️ Instalador (recomendado) | [DiskSnoop-Setup-1.1.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.1.0/DiskSnoop-Setup-1.1.0-x64.exe) |
-| 📦 Portable | [DiskSnoop-Portable-1.1.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.1.0/DiskSnoop-Portable-1.1.0-x64.exe) |
+| 🖥️ Instalador (recomendado) | [DiskSnoop-Setup-1.2.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.2.0/DiskSnoop-Setup-1.2.0-x64.exe) |
+| 📦 Portable | [DiskSnoop-Portable-1.2.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.2.0/DiskSnoop-Portable-1.2.0-x64.exe) |
 
 > ⚠️ O app não tem assinatura de código. O Windows pode exibir aviso de app desconhecido — isso é esperado.
 
@@ -113,11 +113,11 @@ O setup instala em `%LOCALAPPDATA%\Programs\DiskSnoop` por usuário atual, sem p
    ```
 4. Crie e envie a tag:
    ```powershell
-   git tag v1.1.0
-   git push origin v1.1.0
+   git tag v1.2.0
+   git push origin v1.2.0
    ```
 5. Anexe estes arquivos de `release/` na release do GitHub:
-   - `DiskSnoop-Setup-1.1.0-x64.exe`
-   - `DiskSnoop-Setup-1.1.0-x64.exe.blockmap`
+   - `DiskSnoop-Setup-1.2.0-x64.exe`
+   - `DiskSnoop-Setup-1.2.0-x64.exe.blockmap`
    - `latest.yml`
-   - `DiskSnoop-Portable-1.1.0-x64.exe`
+   - `DiskSnoop-Portable-1.2.0-x64.exe`

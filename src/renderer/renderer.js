@@ -3,7 +3,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.1.0";
+let APP_VERSION_LABEL = "1.2.0";
 
 const state = {
   screen: "welcome",
@@ -519,6 +519,28 @@ function safetyBadge(value) {
   return badge("Médio", "medium");
 }
 
+function confidenceBadgeFor(item, context = "candidate") {
+  const [label, kind] = confidenceLevel(item, context);
+  return badge(label, kind);
+}
+
+function confidenceLevel(item, context = "candidate") {
+  if (!item || isViewingHistoricalReport()) return ["Baixa", "high"];
+  if (context === "leftover") {
+    const [status] = leftoverStatus(item);
+    if (status === "Possível sobra") return ["Média", "medium"];
+    if (status === "App instalado") return ["Baixa", "high"];
+    return ["Baixa", "high"];
+  }
+  if (context === "duplicate") {
+    return item?.contentHash || item?.confidence === "Hash confirmado" ? ["Alta", "low"] : ["Média", "medium"];
+  }
+  if (!canMoveToQuarantine(item)) return ["Baixa", "high"];
+  if (item.security === "Seguro revisar" || isProbablyRemovable(item)) return ["Alta", "low"];
+  if (item.security === "Verificar antes") return ["Média", "medium"];
+  return ["Baixa", "high"];
+}
+
 function normalizeItemPath(value) {
   return String(value || "").toLowerCase().replaceAll("/", "\\");
 }
@@ -865,6 +887,11 @@ function modalOverlay() {
           <div>
             <h2>${escapeHtml(modal.title)}</h2>
             <p>${escapeHtml(modal.message)}</p>
+            ${modal.details?.length ? `
+              <ul class="modal-points">
+                ${modal.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join("")}
+              </ul>
+            ` : ""}
             ${modal.requireText ? `
               <label class="modal-input">
                 <span>Digite ${escapeHtml(modal.requireText)} para confirmar</span>
@@ -950,6 +977,12 @@ function totalReviewable() {
   return visibleCandidates().reduce((sum, item) => sum + item.size, 0);
 }
 
+function safeRecoverableTotal() {
+  return visibleCandidates()
+    .filter((item) => canMoveToQuarantine(item) && isLowRiskCandidate(item))
+    .reduce((sum, item) => sum + item.size, 0);
+}
+
 function currentHistoryEntry() {
   return (state.history || []).find((item) => item.id === state.scanResult?.id);
 }
@@ -973,7 +1006,12 @@ function isViewingHistoricalReport() {
 
 function historicalReportNote() {
   if (!isViewingHistoricalReport()) return "";
-  return `<div class="safety-note">${icon("clock")}Relatório antigo ou sem vínculo com o último scan. Para evitar ações em dados possivelmente desatualizados, mover para quarentena fica bloqueado aqui. Faça um novo scan para agir sobre o estado atual do disco.</div>`;
+  return safetyNote(
+    "Relatório antigo",
+    "Relatório antigo ou sem vínculo com o último scan. Para evitar ações em dados possivelmente desatualizados, mover para quarentena fica bloqueado aqui. Faça um novo scan para agir sobre o estado atual do disco.",
+    "clock",
+    "warning"
+  );
 }
 
 function duplicateReviewableTotal() {
@@ -997,7 +1035,10 @@ function overviewTab() {
   const historyEntry = currentHistoryEntry();
   const categories = groupedCandidates();
   const reviewable = totalReviewable();
+  const safeRecoverable = safeRecoverableTotal();
   const duplicateReviewable = duplicateReviewableTotal();
+  const safeCandidates = visibleCandidates().filter((item) => canMoveToQuarantine(item) && isLowRiskCandidate(item)).length;
+  const leftoversCount = possibleLeftoversCount();
   const top = categories.slice(0, 4);
   const largest = top[0]?.[1] || 1;
   const durationMs = historyEntry?.durationMs || (new Date(result.finishedAt).getTime() - new Date(result.startedAt).getTime());
@@ -1021,14 +1062,20 @@ function overviewTab() {
           <div><strong>${compactBytes(reviewable)}</strong><span>${escapeHtml(t("overview.reviewable"))}</span></div>
         </article>
         <article class="metric-card">
+          <span class="metric-icon">${icon("shield")}</span>
+          <div><strong>${compactBytes(safeRecoverable)}</strong><span>Ganho seguro</span></div>
+        </article>
+        <article class="metric-card">
           <span class="metric-icon">${icon("file")}</span>
           <div><strong>${formatCount(visibleCandidates().length)}</strong><span>${escapeHtml(t("overview.found"))}</span></div>
         </article>
         <article class="metric-card">
           <span class="metric-icon">${icon("cube")}</span>
-          <div><strong>${formatCount(possibleLeftoversCount())} apps?</strong><span>${escapeHtml(t("overview.leftovers"))}</span></div>
+          <div><strong>${formatCount(leftoversCount)} apps?</strong><span>${escapeHtml(t("overview.leftovers"))}</span></div>
         </article>
       </section>
+
+      ${reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReviewable, leftoversCount })}
 
       <h2>${escapeHtml(t("overview.scanReport"))}</h2>
       <section class="panel scan-report">
@@ -1100,6 +1147,117 @@ function iconForCandidate(item) {
   return "folder";
 }
 
+function reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReviewable, leftoversCount }) {
+  const steps = [
+    {
+      title: "Comece pelo seguro",
+      text: `${safeCandidates} item(ns) de baixo risco somam ${compactBytes(safeRecoverable)}.`,
+      tab: "candidates",
+      iconName: "shield",
+      status: safeCandidates ? "Pronto" : "Nada agora"
+    },
+    {
+      title: "Revise duplicados",
+      text: duplicateReviewable
+        ? `${compactBytes(duplicateReviewable)} parecem revisáveis, mas exigem escolha manual.`
+        : "Nenhum espaço revisável por duplicados neste scan.",
+      tab: "duplicates",
+      iconName: "copy",
+      status: duplicateReviewable ? "Revisar" : "Limpo"
+    },
+    {
+      title: "Cheque sobras de apps",
+      text: leftoversCount
+        ? `${leftoversCount} pasta(s) parecem sobras possíveis em áreas de apps.`
+        : "Nenhuma sobra de app apareceu como prioridade.",
+      tab: "leftovers",
+      iconName: "cube",
+      status: leftoversCount ? "Checar" : "Limpo"
+    }
+  ];
+  return `
+    <h2>Assistente de revisão</h2>
+    <section class="review-steps">
+      ${steps.map((step, index) => `
+        <button class="review-step" data-action="tab" data-tab="${step.tab}">
+          <span class="review-step-index">${index + 1}</span>
+          <span class="mini-icon">${icon(step.iconName)}</span>
+          <span>
+            <strong>${escapeHtml(step.title)}</strong>
+            <small>${escapeHtml(step.text)}</small>
+          </span>
+          ${badge(step.status, step.status === "Pronto" || step.status === "Limpo" ? "low" : "medium")}
+        </button>
+      `).join("")}
+    </section>
+  `;
+}
+
+function ignoredPresetCandidates(preset) {
+  const items = [...visibleCandidates(), ...visibleLargeFolders()].filter((item) => item?.path);
+  const existing = new Set((state.settings?.ignoredPaths || []).map(normalizeItemPath));
+  const generatedNames = new Set(["node_modules", "dist", "build", ".next", ".cache", ".turbo", "coverage", "target", "obj"]);
+  const candidates = items.filter((item) => {
+    const lowerPath = normalizeItemPath(item.path);
+    const name = String(item.name || item.path.split(/[\\/]/).pop() || "").toLowerCase();
+    const type = cleanCandidateType(item.type);
+    if (preset === "generated") return generatedNames.has(name) || type === "Dev";
+    if (preset === "caches") return type === "Cache" || lowerPath.includes("\\cache\\") || lowerPath.includes("\\caches\\");
+    if (preset === "downloads") return lowerPath.includes("\\downloads\\") && ["Download", "Instalador", "Compactado"].includes(type);
+    return false;
+  });
+  const seen = new Set();
+  return candidates
+    .map((item) => item.path)
+    .filter((itemPath) => {
+      const key = normalizeItemPath(itemPath);
+      if (!key || existing.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function ignoredPresetCards() {
+  const presets = [
+    {
+      key: "generated",
+      title: "Gerados por projetos",
+      description: "node_modules, builds, caches de build e saídas recriáveis encontrados neste scan."
+    },
+    {
+      key: "caches",
+      title: "Caches detectados",
+      description: "Pastas de cache encontradas pelo scanner para sair dos próximos relatórios."
+    },
+    {
+      key: "downloads",
+      title: "Downloads antigos",
+      description: "Instaladores, compactados e downloads antigos já sinalizados neste scan."
+    }
+  ].map((preset) => ({ ...preset, count: ignoredPresetCandidates(preset.key).length }));
+  return `
+    <div class="ignored-suggestions">
+      ${presets.map((preset) => `
+        <article class="ignored-suggestion ${preset.count ? "" : "is-empty"}">
+          <div class="ignored-suggestion-copy">
+            <strong>${escapeHtml(preset.title)}</strong>
+            <p>${escapeHtml(preset.description)}</p>
+          </div>
+          <div class="ignored-suggestion-footer">
+            <span class="ignored-suggestion-count">
+              <strong>${escapeHtml(preset.count)}</strong>
+              <small>Encontrados</small>
+            </span>
+            <button class="secondary ignored-suggestion-action" data-action="apply-ignore-preset" data-preset="${preset.key}" ${preset.count ? "" : "disabled"}>
+              Ignorar
+            </button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function filteredFolders() {
   const query = state.search.toLowerCase();
   return [...visibleLargeFolders()]
@@ -1165,12 +1323,14 @@ function foldersTab() {
 
 function folderDetails(item) {
   if (!item) return `<section class="panel detail-strip"><p class="muted">Selecione uma pasta para ver detalhes.</p></section>`;
+  const guidance = folderReviewGuidance(item);
   return `
     <section class="panel detail-strip">
       <span class="detail-icon">${icon("folder")}</span>
       <div class="detail-copy">
         <h3>${escapeHtml(item.path)}</h3>
         ${reviewCallout("Resumo seguro", item.reason || "Pasta grande detectada no scan.", "folder")}
+        ${reviewCallout("O que conferir", guidance.text, guidance.icon, guidance.tone)}
         ${childrenSummary(item)}
         <div class="detail-actions">
           <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
@@ -1180,6 +1340,41 @@ function folderDetails(item) {
       </div>
     </section>
   `;
+}
+
+function safetyNote(title, text, iconName = "shield", tone = "info") {
+  return `
+    <div class="safety-note ${tone === "warning" ? "warning" : ""}">
+      ${icon(iconName)}
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(text)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function folderReviewGuidance(item) {
+  const lower = String(item?.path || "").toLowerCase();
+  if (lower.includes("\\appdata\\")) {
+    return {
+      text: "AppData costuma misturar cache, configurações e dados importantes de apps. Abra a pasta e use a lista de conteúdo para entender o que realmente pesa.",
+      icon: "shield",
+      tone: "warning"
+    };
+  }
+  if (lower.includes("\\downloads\\") || lower.includes("\\videos\\") || lower.includes("\\documents\\")) {
+    return {
+      text: "Procure instaladores antigos, cópias repetidas e arquivos que você reconhece. Pastas pessoais merecem revisão manual antes de qualquer limpeza.",
+      icon: "list",
+      tone: "warning"
+    };
+  }
+  return {
+    text: "Veja os maiores itens dentro da pasta e confirme se ela ainda faz parte de um projeto, app ou backup ativo antes de ignorar ou limpar.",
+    icon: "list",
+    tone: "info"
+  };
 }
 
 function reviewCallout(title, text, iconName = "shield", tone = "info") {
@@ -1290,6 +1485,7 @@ function largeFilesTab() {
 function fileDetails(item) {
   if (!item) return `<section class="panel explanation"><p class="muted">Selecione um arquivo para ver detalhes.</p></section>`;
   const canQuarantine = canMoveToQuarantine(item);
+  const guidance = fileReviewGuidance(item);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1301,9 +1497,11 @@ function fileDetails(item) {
           <span>Tamanho <strong>${compactBytes(item.size)}</strong></span>
           <span>Modificado <strong>${relativeDate(item.modifiedAt)}</strong></span>
           <span>Selo ${safetyBadge(item.security)}</span>
+          <span>Confiança ${confidenceBadgeFor(item)}</span>
         </div>
       </div>
       ${reviewCallout("Motivo do achado", item.reason || "Arquivo grande detectado no scan. Revise antes de mover, especialmente se for documento, vídeo ou arquivo pessoal.", "file")}
+      ${reviewCallout("O que conferir", guidance.text, guidance.icon, guidance.tone)}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir local</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
@@ -1313,6 +1511,29 @@ function fileDetails(item) {
       ${canQuarantine ? "" : reviewCallout("Atenção antes de mover", blockedQuarantineReason(item), "shield", "warning")}
     </section>
   `;
+}
+
+function fileReviewGuidance(item) {
+  const lower = `${item?.name || ""} ${item?.path || ""}`.toLowerCase();
+  if (lower.includes("\\downloads\\") || lower.endsWith(".exe") || lower.endsWith(".msi")) {
+    return {
+      text: "Se for instalador antigo, confirme se o programa já está instalado ou se existe uma versão mais nova. Quando estiver em dúvida, mova para quarentena em vez de excluir.",
+      icon: "download",
+      tone: "info"
+    };
+  }
+  if (lower.includes("\\videos\\") || lower.includes("\\pictures\\") || lower.includes("\\documents\\")) {
+    return {
+      text: "Arquivos pessoais podem ser únicos. Abra o local, confira o nome e a data, e só mova para quarentena quando tiver certeza de que não precisa mais deles.",
+      icon: "shield",
+      tone: "warning"
+    };
+  }
+  return {
+    text: "Abra o local para confirmar se o arquivo ainda é usado. A quarentena ajuda a testar a remoção sem apagar permanentemente.",
+    icon: "list",
+    tone: "info"
+  };
 }
 
 function filteredCandidates() {
@@ -1404,7 +1625,7 @@ function candidatesTab() {
         <p>${items.length} itens visíveis de ${totalCandidates}. O filtro padrão mostra achados revisáveis e evita itens que exigem cautela maior.</p>
       </div>
       ${historicalReportNote()}
-      <div class="safety-note">${icon("shield")}Candidatos são sugestões de revisão, não comandos de limpeza. Itens protegidos, sensíveis ou ligados a apps instalados ficam bloqueados para quarentena normal.</div>
+      ${safetyNote("Revisão protegida", "Candidatos são sugestões de revisão, não comandos de limpeza. Itens protegidos, sensíveis ou ligados a apps instalados ficam bloqueados para quarentena normal.")}
       <div class="leftover-summary candidate-summary">
         <span><strong>${summary.safe}</strong> seguros</span>
         <span><strong>${summary.likely}</strong> prováveis removíveis</span>
@@ -1467,6 +1688,7 @@ function selectControl(field, options, current) {
 function candidateDetails(item) {
   if (!item) return `<section class="panel explanation"><p class="muted">Selecione um candidato para ver a explicação.</p></section>`;
   const canQuarantine = canMoveToQuarantine(item);
+  const guidance = candidateReviewGuidance(item);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1479,9 +1701,11 @@ function candidateDetails(item) {
           <span>Tamanho <strong>${compactBytes(item.size)}</strong></span>
           <span>Modificado <strong>${relativeDate(item.modifiedAt)}</strong></span>
           <span>Selo ${safetyBadge(item.security)}</span>
+          <span>Confiança ${confidenceBadgeFor(item)}</span>
         </div>
       </div>
       ${reviewCallout("Motivo do achado", item.reason || "Este item parece ocupar espaço relevante e merece revisão.", "shield")}
+      ${reviewCallout("O que conferir", guidance.text, guidance.icon, guidance.tone)}
       ${childrenSummary(item)}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir</button>
@@ -1493,6 +1717,43 @@ function candidateDetails(item) {
       ${canQuarantine ? "" : reviewCallout("Atenção antes de mover", blockedQuarantineReason(item), "shield", "warning")}
     </section>
   `;
+}
+
+function candidateReviewGuidance(item) {
+  const type = cleanCandidateType(item?.type);
+  if (type === "Dev") {
+    return {
+      text: "Confirme se o projeto ainda está em uso. Dependências e builds geralmente podem ser recriados, mas código-fonte e arquivos locais não devem ser movidos.",
+      icon: "folder",
+      tone: "info"
+    };
+  }
+  if (type === "Cache" || type === "Logs" || type === "Temporario") {
+    return {
+      text: "Caches, logs e temporários costumam ser recriados pelos apps. Mesmo assim, abra o conteúdo se o caminho pertencer a um app importante.",
+      icon: "database",
+      tone: "info"
+    };
+  }
+  if (type === "Download" || type === "Instalador" || type === "Compactado") {
+    return {
+      text: "Confira se existe uma cópia mais nova ou se o arquivo já cumpriu sua função. Itens antigos em Downloads são bons candidatos para quarentena.",
+      icon: "download",
+      tone: "info"
+    };
+  }
+  if (type === "Arquivo grande") {
+    return {
+      text: "Arquivos grandes podem ser pessoais ou difíceis de recuperar. Abra o local e confirme o conteúdo antes de mover.",
+      icon: "shield",
+      tone: "warning"
+    };
+  }
+  return {
+    text: "Use o conteúdo e o caminho como pistas. Se o item parecer ligado a algo ativo, mantenha fora da quarentena.",
+    icon: "list",
+    tone: "warning"
+  };
 }
 
 function isProtectedUiPath(itemPath) {
@@ -1570,9 +1831,11 @@ function duplicatesTab() {
         <h1>Possíveis Duplicados</h1>
         <p>${groups.length} grupos visíveis. Espaço revisável estimado: ${compactBytes(reviewable)}.</p>
       </div>
-      <div class="safety-note">${icon("shield")}${hashEnabled
+      ${safetyNote("Duplicados com cautela", hashEnabled
         ? "Duplicados são pré-filtrados por nome e tamanho e confirmados por hash SHA-256 quando o arquivo pode ser lido. Nada é removido automaticamente."
-        : "Hash de duplicados está desativado nas configurações. Os grupos abaixo são apenas suspeitas por nome e tamanho."}</div>
+        : "Hash de duplicados está desativado nas configurações. Os grupos abaixo são apenas suspeitas por nome e tamanho.",
+      "shield",
+      hashEnabled ? "info" : "warning")}
       <div class="leftover-summary duplicate-summary">
         <span><strong>${groups.length}</strong> grupos</span>
         <span><strong>${totalCopies}</strong> cópias</span>
@@ -1620,6 +1883,7 @@ function duplicateDetails(group) {
     return `<section class="panel explanation"><p class="muted">Nenhum grupo selecionado.</p></section>`;
   }
   const items = group.items || [];
+  const summary = duplicateReviewSummary(group);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1632,8 +1896,10 @@ function duplicateDetails(group) {
           <span>Tamanho cada <strong>${compactBytes(group.size)}</strong></span>
           <span>Estimativa <strong>${compactBytes(group.reviewableBytes)}</strong></span>
           <span>Verificação <strong>${escapeHtml(group.algorithm || "Nome e tamanho")}</strong></span>
+          <span>Confiança ${confidenceBadgeFor(group, "duplicate")}</span>
         </div>
       </div>
+      ${reviewCallout(summary.title, summary.text, summary.icon, summary.tone)}
       ${group.contentHash ? `<p class="hash-line">Hash SHA-256: <code>${escapeHtml(group.contentHash)}</code></p>` : ""}
       <div class="duplicate-copy-list">
         ${items.map((item, index) => `
@@ -1648,6 +1914,23 @@ function duplicateDetails(group) {
       ${reviewCallout("Como revisar", "A primeira linha é só a cópia mais recente por data de modificação. Mesmo com hash confirmado, abra os caminhos quando houver dúvida antes de mover qualquer cópia.", "shield")}
     </section>
   `;
+}
+
+function duplicateReviewSummary(group) {
+  if (group?.contentHash || group?.confidence === "Hash confirmado") {
+    return {
+      title: "Hash confirmado",
+      text: "As cópias lidas têm o mesmo conteúdo SHA-256. Ainda assim, escolha manualmente qual caminho manter antes de agir fora desta tela.",
+      icon: "shield",
+      tone: "info"
+    };
+  }
+  return {
+    title: "Possível duplicado",
+    text: "Este grupo foi montado por nome e tamanho. Abra os caminhos antes de decidir, porque arquivos diferentes podem parecer iguais por fora.",
+    icon: "copy",
+    tone: "warning"
+  };
 }
 
 function totalQuarantined() {
@@ -1799,7 +2082,7 @@ function leftoversTab() {
         <p>Possíveis pastas órfãs encontradas em AppData, ProgramData e Program Files. Esta tela é conservadora.</p>
       </div>
       ${historicalReportNote()}
-      <div class="safety-note">${icon("shield")}Esses achados são pistas, não confirmação de sobra. Só itens marcados como possível sobra ficam disponíveis para quarentena normal; o restante deve ser aberto e revisado manualmente.</div>
+      ${safetyNote("Achados conservadores", "Esses achados são pistas, não confirmação de sobra. Só itens marcados como possível sobra ficam disponíveis para quarentena normal; o restante deve ser aberto e revisado manualmente.")}
       <div class="leftover-summary">
         <span><strong>${allItems.length}</strong> analisadas</span>
         <span><strong>${possible}</strong> possíveis sobras</span>
@@ -1848,6 +2131,7 @@ function leftoverDetails(item) {
   const match = matchingInstalledApp(item);
   const [status, kind] = leftoverStatus(item);
   const canQuarantine = canMoveToQuarantine(item);
+  const summary = leftoverReviewSummary(status, match);
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
@@ -1860,10 +2144,11 @@ function leftoverDetails(item) {
           <span>Local <strong>${escapeHtml(leftoverLocation(item))}</strong></span>
           <span>Tamanho <strong>${compactBytes(item.size)}</strong></span>
           <span>Modificado <strong>${relativeDate(item.modifiedAt)}</strong></span>
+          <span>Confiança ${confidenceBadgeFor(item, "leftover")}</span>
         </div>
       </div>
-      <p>${match ? `Nome parecido com app instalado: ${escapeHtml(match.name)}. ` : ""}O DiskSnoop encontrou esta pasta em uma área comum de dados de aplicativos. Isso não significa que ela pode ser removida automaticamente; abra a pasta e confirme se o app ainda existe ou se os dados são importantes.</p>
-      ${status === "Possível sobra" ? `<p class="muted">Este item não bateu com a lista de apps instalados e fica em uma área comum de cache/dados locais. Ainda assim, revise o conteúdo antes de mover para quarentena.</p>` : `<p class="muted">Por segurança, este status não é tratado como remoção normal. Use a ação de abrir pasta e revise manualmente.</p>`}
+      ${reviewCallout(summary.title, summary.text, summary.icon, summary.tone)}
+      ${reviewCallout(summary.reviewTitle, summary.reviewText, "list", summary.reviewTone)}
       ${childrenSummary(item)}
       <div class="detail-actions">
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
@@ -1871,10 +2156,44 @@ function leftoverDetails(item) {
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
         <button class="secondary" data-action="quarantine-leftover" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
-      ${canQuarantine && crossVolumeQuarantineNote(item) ? `<p class="muted">${escapeHtml(crossVolumeQuarantineNote(item))}</p>` : ""}
-      ${canQuarantine ? "" : `<p class="muted">${escapeHtml(blockedQuarantineReason(item))}</p>`}
+      ${canQuarantine && crossVolumeQuarantineNote(item) ? reviewCallout("Atenção antes de mover", crossVolumeQuarantineNote(item), "shield", "warning") : ""}
+      ${canQuarantine ? "" : reviewCallout("Atenção antes de mover", blockedQuarantineReason(item), "shield", "warning")}
     </section>
   `;
+}
+
+function leftoverReviewSummary(status, match) {
+  if (match) {
+    return {
+      title: "App instalado encontrado",
+      text: `O nome lembra ${match.name}. Isso geralmente indica que a pasta ainda pertence a um app instalado ou usado recentemente.`,
+      icon: "shield",
+      tone: "warning",
+      reviewTitle: "Como revisar",
+      reviewText: "Abra a pasta e confira se os arquivos ainda parecem ligados ao app. Se estiver em dúvida, mantenha o item fora da quarentena.",
+      reviewTone: "warning"
+    };
+  }
+  if (status === "Possível sobra") {
+    return {
+      title: "Possível sobra de app",
+      text: "Encontramos esta pasta em uma área comum de dados de aplicativos, mas ela não apareceu como app instalado. Pode ser cache antigo, configuração esquecida ou dado ainda útil.",
+      icon: "folder",
+      tone: "info",
+      reviewTitle: "Antes de mover",
+      reviewText: "Abra a pasta, confira os maiores itens e veja se o app ainda existe. Se nada parecer importante, use a quarentena para testar com segurança.",
+      reviewTone: "info"
+    };
+  }
+  return {
+    title: "Revisão manual necessária",
+    text: "Esta pasta fica em uma área onde apps costumam guardar dados compartilhados ou sensíveis. O DiskSnoop mostra o espaço, mas deixa a decisão para revisão manual.",
+    icon: "shield",
+    tone: "warning",
+    reviewTitle: "Como revisar",
+    reviewText: "Abra o local e revise manualmente. Este status não entra no fluxo normal de quarentena para evitar mexer em dados de apps ativos.",
+    reviewTone: "warning"
+  };
 }
 
 function quarantineTab() {
@@ -1893,7 +2212,7 @@ function quarantineTab() {
         <h1>Quarentena</h1>
         <p>${summary.active} itens ativos. A lista principal mostra apenas o que ainda pode ser restaurado ou excluído.</p>
       </div>
-      <div class="safety-note">${icon("shield")}Registros finalizados e arquivos ausentes ficam separados para não bagunçar sua revisão. Limpar registros encerrados remove apenas o histórico local da quarentena.</div>
+      ${safetyNote("Quarentena organizada", "Registros finalizados e arquivos ausentes ficam separados para não bagunçar sua revisão. Limpar registros encerrados remove apenas o histórico local da quarentena.")}
       <div class="quarantine-toolbar">
         <div class="quarantine-tabs">
           ${["Ativos", "Ausentes", "Finalizados", "Todos"].map((filter) => `
@@ -1934,7 +2253,7 @@ function quarantineTab() {
           <p>Origem: ${escapeHtml(selected.originalPath || "Origem não registrada")}</p>
           <p>Quarentena: ${escapeHtml(selected.quarantinePath || "-")}</p>
           <p>Status: ${escapeHtml(selected.status || "Em quarentena")}</p>
-          ${selected.recovered ? `<p class="muted">Este item foi encontrado na pasta de quarentena, mas o registro original não estava no histórico do DiskSnoop. Você pode abrir ou excluir permanentemente, mas a restauração automática fica indisponível sem o caminho original.</p>` : ""}
+          ${selected.recovered ? reviewCallout("Origem não registrada", "Este item foi encontrado na pasta de quarentena, mas o registro original não estava no histórico do DiskSnoop. Você pode abrir ou excluir permanentemente, mas a restauração automática fica indisponível sem o caminho original.", "shield", "warning") : ""}
           <div class="detail-actions">
             <button class="secondary" data-action="open-quarantine-item" data-path="${escapeHtml(selected.quarantinePath || "")}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("folder")}Abrir na quarentena</button>
             <button class="outline-primary" data-action="restore-quarantine" data-id="${escapeHtml(selected.id)}" ${canRestoreSelected ? "" : "disabled"}>${icon("reset")}Restaurar</button>
@@ -2286,6 +2605,7 @@ function settingsTab() {
           </div>
           <button class="secondary" data-action="add-ignored-folder">${icon("folder")}Adicionar pasta</button>
         </div>
+        ${ignoredPresetCards()}
         ${pathList(state.settings.ignoredPaths || [], "ignored")}
         <div class="detail-actions compact-actions">
           <button class="secondary" data-action="show-ignored" ${ignoredCount ? "" : "disabled"}>${icon("list")}Ver ignorados</button>
@@ -2656,6 +2976,7 @@ async function quarantineItems(items) {
       await confirmModal({
         title: "Revisão manual necessária",
         message: "Este item parece protegido, sensível ou ligado a um app instalado. O DiskSnoop pode abrir o local para você revisar, mas não vai mover isso para quarentena como candidato normal.",
+        details: ["Abra o local para confirmar o conteúdo antes de qualquer ação manual."],
         confirmText: "Entendi",
         icon: "shield"
       });
@@ -2666,6 +2987,7 @@ async function quarantineItems(items) {
     await confirmModal({
       title: "Alguns itens exigem revisão manual",
       message: `${blocked.length} item(ns) ficaram de fora porque parecem protegidos, sensíveis ou ligados a apps instalados. O DiskSnoop não move esse tipo de item para quarentena automaticamente.`,
+      details: ["Os demais itens continuam disponíveis para revisão e quarentena."],
       confirmText: "Entendi",
       icon: "shield"
     });
@@ -2673,7 +2995,12 @@ async function quarantineItems(items) {
   const crossVolumeCount = valid.filter(isQuarantineOnDifferentVolume).length;
   const ok = await confirmModal({
     title: "Mover para quarentena",
-    message: `Mover ${valid.length} item(ns) para a quarentena? Nada será excluído permanentemente.${crossVolumeCount ? " A quarentena está em outro disco para parte da seleção; pastas entre volumes podem ser bloqueadas por segurança. Para pastas grandes, escolha uma quarentena no mesmo disco." : ""}`,
+    message: `Mover ${valid.length} item(ns) para a quarentena?`,
+    details: [
+      "Nada será excluído permanentemente.",
+      "Você poderá restaurar o item se algo parecer errado.",
+      ...(crossVolumeCount ? ["A quarentena está em outro disco para parte da seleção; pastas entre volumes podem ser bloqueadas por segurança."] : [])
+    ],
     confirmText: "Mover",
     icon: "shield"
   });
@@ -3106,6 +3433,18 @@ document.addEventListener("click", async (event) => {
       state.settings = await api.saveSettings(state.settings);
       render();
     }
+  }
+  if (action === "apply-ignore-preset") {
+    const preset = target.dataset.preset;
+    const paths = ignoredPresetCandidates(preset);
+    if (!paths.length) {
+      setToast("Nenhuma nova pasta para ignorar neste preset.");
+      return;
+    }
+    state.settings.ignoredPaths = [...(state.settings.ignoredPaths || []), ...paths];
+    state.settings = await api.saveSettings(state.settings);
+    render();
+    setToast(`${paths.length} pasta(s) adicionada(s) aos ignorados.`);
   }
   if (action === "remove-included-path") {
     state.settings.includedPaths.splice(Number(target.dataset.index), 1);
