@@ -1,4 +1,52 @@
 window.diskSnoopLocalChangelog = {
+  "1.3.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.3.0",
+      sections: [
+        {
+          title: "Destaques",
+          items: [
+            "Visao Geral ganhou comparacao com o scan anterior do mesmo disco, incluindo variacao de ganho seguro, revisavel, duplicados e categorias.",
+            "Candidatos ganhou simulacao de limpeza para estimar o impacto da selecao antes de mover qualquer item para quarentena.",
+            "Novo filtro de confianca separa achados de Alta, Media e Baixa confianca.",
+            "A tabela de candidatos agora mostra a confianca ao lado do selo de seguranca.",
+            "Relatorios carregados removem automaticamente itens que ja foram apagados fora do DiskSnoop."
+          ]
+        },
+        {
+          title: "Revisao segura",
+          items: [
+            "Botao Selecionar plano seguro marca apenas itens visiveis, moviveis e com alta confianca.",
+            "Limpar selecao permite recomecar a simulacao sem alterar arquivos.",
+            "Comparacao historica ajuda a entender o que cresceu desde o scan anterior."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.3.0",
+      sections: [
+        {
+          title: "Highlights",
+          items: [
+            "Overview now compares against the previous scan for the same drive, including safe gain, reviewable space, duplicates, and category deltas.",
+            "Cleanup Candidates now includes a cleanup simulation to estimate the current selection before moving anything to quarantine.",
+            "A new confidence filter separates High, Medium, and Low confidence findings.",
+            "The candidates table now shows confidence next to the safety badge.",
+            "Loaded reports automatically remove items that were already deleted outside DiskSnoop."
+          ]
+        },
+        {
+          title: "Safe review",
+          items: [
+            "Select safe plan marks only visible, movable, high-confidence items.",
+            "Clear selection lets you restart the simulation without changing files.",
+            "Historical comparison helps explain what grew since the previous scan."
+          ]
+        }
+      ]
+    }
+  },
   "1.2.0": {
     "pt-BR": {
       title: "DiskSnoop 1.2.0",

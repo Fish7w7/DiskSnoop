@@ -1167,6 +1167,12 @@ ipcMain.handle("path:listContents", async (_event, targetPath) => {
   });
 });
 
+ipcMain.handle("path:existsMany", async (_event, targetPaths = []) => {
+  const paths = Array.isArray(targetPaths) ? targetPaths : [];
+  const unique = [...new Set(paths.map((item) => String(item || "")).filter(Boolean))].slice(0, 2500);
+  return Object.fromEntries(unique.map((itemPath) => [itemPath, fscb.existsSync(itemPath)]));
+});
+
 ipcMain.handle("apps:listInstalled", async () => {
   if (process.platform !== "win32") return [];
   const script = `

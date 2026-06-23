@@ -59,6 +59,17 @@
       "Uso por categoria": "Usage by category",
       "Ganho seguro": "Safe gain",
       "Assistente de revisão": "Review assistant",
+      "Comparação com scan anterior": "Compare with previous scan",
+      "Sem base anterior para este disco": "No previous baseline for this drive",
+      "Depois do próximo scan, o DiskSnoop mostra o que cresceu, reduziu e mudou de prioridade.": "After the next scan, DiskSnoop shows what grew, shrank, and changed priority.",
+      "Sem variação relevante": "No relevant change",
+      "Variações ajudam a separar crescimento real de achados antigos que já estavam no disco.": "Changes help separate real growth from older findings that were already on disk.",
+      "Simulacao de limpeza": "Cleanup simulation",
+      "Selecionar plano seguro": "Select safe plan",
+      "Limpar selecao": "Clear selection",
+      "Nada selecionado para simular.": "Nothing selected to simulate.",
+      "Esse item nao existe mais e saiu do relatorio atual.": "This item no longer exists and was removed from the current report.",
+      "Confianca": "Confidence",
       "Comece pelo seguro": "Start with safe items",
       "Revise duplicados": "Review duplicates",
       "Cheque sobras de apps": "Check app leftovers",
@@ -735,6 +746,26 @@
       [
         "^(\\d+) item\\(ns\\) de baixo risco somam (.+)\\.$",
         "$1 low-risk item(s) add up to $2."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) na simulacao atual\\.$",
+        "$1 item(s) in the current simulation."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) no plano seguro visivel\\.$",
+        "$1 item(s) in the visible safe plan."
+      ],
+      [
+        "^Desde (.+)$",
+        "Since $1"
+      ],
+      [
+        "^([+-]?\\d+) candidato\\(s\\)$",
+        "$1 candidate(s)"
+      ],
+      [
+        "^(\\d+) item\\(ns\\) apagado\\(s\\) fora do DiskSnoop foram removidos deste relatorio\\.$",
+        "$1 item(s) deleted outside DiskSnoop were removed from this report."
       ],
       [
         "^(.+) parecem revisáveis, mas exigem escolha manual\\.$",

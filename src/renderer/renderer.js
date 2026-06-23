@@ -3,7 +3,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.2.0";
+let APP_VERSION_LABEL = "1.3.0";
 
 const state = {
   screen: "welcome",
@@ -13,6 +13,7 @@ const state = {
   settings: null,
   scanProgress: null,
   scanResult: null,
+  scanComparison: null,
   reportMode: "none",
   hiddenPaths: new Set(),
   selectedItem: null,
@@ -35,6 +36,7 @@ const state = {
   sort: "size",
   candidateScope: "Todos",
   candidateSafety: "Revisáveis",
+  candidateConfidence: "Todas",
   candidateAge: "Prioridade",
   candidateMinSize: 10 * MB,
   candidateLimit: 80,
@@ -473,6 +475,17 @@ function cleanIpcError(error) {
   message = message.replace(/^Error invoking remote method '[^']+':\s*/i, "");
   message = message.replace(/^Error:\s*/i, "");
   return message.trim();
+}
+
+function isMissingPathError(error) {
+  const message = cleanIpcError(error).toLowerCase();
+  return message.includes("caminho nao encontrado")
+    || message.includes("caminho não encontrado")
+    || message.includes("path not found")
+    || message.includes("file not found")
+    || message.includes("cannot find")
+    || message.includes("não encontrado")
+    || message.includes("nÃ£o encontrado");
 }
 
 function friendlyMoveError(error, item) {
@@ -1029,6 +1042,115 @@ function possibleLeftoversCount() {
   }).length;
 }
 
+function isMetricSafeCandidate(item) {
+  if (!item?.path) return false;
+  if (item.security === "Sensivel" || item.security === "Sensível") return false;
+  if (isProtectedUiPath(item.path)) return false;
+  return isLowRiskCandidate(item);
+}
+
+function scanMetrics(result = state.scanResult) {
+  const candidates = (result?.candidates || []).filter((item) => !isHiddenPath(item));
+  const duplicateGroups = result?.duplicateGroups || [];
+  const safeBytes = candidates
+    .filter(isMetricSafeCandidate)
+    .reduce((sum, item) => sum + (item.size || 0), 0);
+  const reviewableBytes = candidates.reduce((sum, item) => sum + (item.size || 0), 0);
+  const duplicateBytes = duplicateGroups.reduce((sum, group) => sum + (group.reviewableBytes || 0), 0);
+  const categories = new Map();
+  for (const item of candidates) {
+    const type = cleanCandidateType(item.type);
+    categories.set(type, (categories.get(type) || 0) + (item.size || 0));
+  }
+  return {
+    safeBytes,
+    reviewableBytes,
+    duplicateBytes,
+    candidates: candidates.length,
+    categories
+  };
+}
+
+function buildScanComparison(current, previous) {
+  if (!current?.id || !previous?.id) return null;
+  const now = scanMetrics(current);
+  const before = scanMetrics(previous);
+  const categoryRows = [...now.categories.entries()]
+    .map(([name, size]) => {
+      const previousSize = before.categories.get(name) || 0;
+      return { name, size, delta: size - previousSize };
+    })
+    .filter((row) => Math.abs(row.delta) >= 10 * MB)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 4);
+  return {
+    previousId: previous.id,
+    previousDate: previous.finishedAt,
+    safeDelta: now.safeBytes - before.safeBytes,
+    reviewableDelta: now.reviewableBytes - before.reviewableBytes,
+    duplicateDelta: now.duplicateBytes - before.duplicateBytes,
+    candidateDelta: now.candidates - before.candidates,
+    categoryRows
+  };
+}
+
+function signedBytes(value) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${compactBytes(Math.abs(value || 0))}`;
+}
+
+function signedCount(value) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${Math.abs(value || 0).toLocaleString("pt-BR")}`;
+}
+
+function deltaBadge(value) {
+  const kind = value > 0 ? "medium" : value < 0 ? "low" : "neutral";
+  return badge(signedBytes(value), kind);
+}
+
+function scanComparisonPanel() {
+  const comparison = state.scanComparison;
+  if (!comparison) {
+    return `
+      <h2>Comparação com scan anterior</h2>
+      <section class="panel comparison-panel comparison-empty">
+        <span class="mini-icon">${icon("clock")}</span>
+        <div>
+          <strong>Sem base anterior para este disco</strong>
+          <p>Depois do próximo scan, o DiskSnoop mostra o que cresceu, reduziu e mudou de prioridade.</p>
+        </div>
+      </section>
+    `;
+  }
+  const rows = comparison.categoryRows.length ? comparison.categoryRows : [{ name: "Sem variação relevante", delta: 0 }];
+  return `
+    <h2>Comparação com scan anterior</h2>
+    <section class="panel comparison-panel">
+      <div class="comparison-head">
+        <div>
+          <strong>Desde ${escapeHtml(relativeDate(comparison.previousDate))}</strong>
+          <p>Variações ajudam a separar crescimento real de achados antigos que já estavam no disco.</p>
+        </div>
+        <span>${signedCount(comparison.candidateDelta)} candidato(s)</span>
+      </div>
+      <div class="comparison-metrics">
+        <div><span>Revisável</span>${deltaBadge(comparison.reviewableDelta)}</div>
+        <div><span>Ganho seguro</span>${deltaBadge(comparison.safeDelta)}</div>
+        <div><span>Duplicados</span>${deltaBadge(comparison.duplicateDelta)}</div>
+      </div>
+      <div class="comparison-categories">
+        ${rows.map((row) => `
+          <div class="comparison-row">
+            <span>${escapeHtml(row.name)}</span>
+            ${deltaBadge(row.delta)}
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function overviewTab() {
   const result = state.scanResult;
   const drive = result.drive;
@@ -1076,6 +1198,8 @@ function overviewTab() {
       </section>
 
       ${reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReviewable, leftoversCount })}
+
+      ${scanComparisonPanel()}
 
       <h2>${escapeHtml(t("overview.scanReport"))}</h2>
       <section class="panel scan-report">
@@ -1549,6 +1673,7 @@ function filteredCandidates() {
       if ((state.candidateSafety === "Provavel removivel" || state.candidateSafety === "Provável removível") && item.security !== "Provavel removivel" && item.security !== "Provável removível") return false;
       return true;
     })
+    .filter((item) => state.candidateConfidence === "Todas" || confidenceLevel(item)[0] === state.candidateConfidence)
     .sort((a, b) => {
       if (state.candidateAge === "Prioridade") return candidatePriorityScore(b) - candidatePriorityScore(a);
       if (state.candidateAge === "Mais antigos") return new Date(a.modifiedAt || 0) - new Date(b.modifiedAt || 0);
@@ -1608,6 +1733,34 @@ function cleanCandidateType(type) {
   return type;
 }
 
+function selectionSimulationPanel(selectedItems, visibleItems) {
+  const selectedSize = selectedItems.reduce((sum, item) => sum + (item.size || 0), 0);
+  const safePlan = visibleItems.filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");
+  const safePlanSize = safePlan.reduce((sum, item) => sum + (item.size || 0), 0);
+  const previewItems = selectedItems.length ? selectedItems : safePlan.slice(0, 8);
+  const previewSize = selectedItems.length ? selectedSize : safePlanSize;
+  return `
+    <section class="panel simulation-panel">
+      <div class="simulation-main">
+        <span class="metric-icon">${icon("shield")}</span>
+        <div>
+          <strong>${compactBytes(previewSize)}</strong>
+          <p>${selectedItems.length ? `${selectedItems.length} item(ns) na simulacao atual.` : `${safePlan.length} item(ns) no plano seguro visivel.`}</p>
+        </div>
+      </div>
+      <div class="simulation-actions">
+        <button class="secondary" data-action="select-safe-plan" ${safePlan.length ? "" : "disabled"}>${icon("clipboard")}Selecionar plano seguro</button>
+        <button class="secondary" data-action="clear-candidate-selection" ${state.selectedIds.size ? "" : "disabled"}>${icon("ban")}Limpar selecao</button>
+      </div>
+      <div class="simulation-preview">
+        ${previewItems.slice(0, 4).map((item) => `
+          <span>${escapeHtml(item.name)} <strong>${compactBytes(item.size)}</strong></span>
+        `).join("") || "<span>Nada selecionado para simular.</span>"}
+      </div>
+    </section>
+  `;
+}
+
 function candidatesTab() {
   const items = filteredCandidates();
   const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
@@ -1632,10 +1785,13 @@ function candidatesTab() {
         <span><strong>${summary.review}</strong> verificar antes</span>
         <span><strong>${summary.blocked}</strong> bloqueados</span>
       </div>
+      <h2>Simulacao de limpeza</h2>
+      ${selectionSimulationPanel(selectedItems, visibleItems)}
       <div class="filters-row candidates-filters">
         <label class="search-box">${icon("search")}<input data-field="candidateSearch" value="${escapeHtml(state.candidateSearch)}" placeholder="Buscar item ou caminho..."></label>
         ${selectControl("candidateScope", ["Todos", "Dev", "Instalador", "Cache", "Logs", "Arquivo grande", "Download", "Compactado", "Temporario"], state.candidateScope)}
         ${selectControl("candidateSafety", ["Revisáveis", "Seguro revisar", "Provável removível", "Verificar antes", "Todos"], state.candidateSafety)}
+        ${selectControl("candidateConfidence", ["Todas", "Alta", "Média", "Baixa"], state.candidateConfidence)}
         ${selectControl("candidateMinSize", [["Relevantes: 10 MB+", 10 * MB], ["Qualquer tamanho", 0], ["100 MB+", 100 * MB], ["1 GB+", GB]], state.candidateMinSize)}
         ${selectControl("candidateAge", ["Prioridade", "Maiores", "Mais antigos"], state.candidateAge)}
       </div>
@@ -1646,7 +1802,7 @@ function candidatesTab() {
       </div>
       <section class="panel table-panel candidates-panel">
         <table class="candidates-table">
-          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Selo</th></tr></thead>
+          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Selo</th><th>Confianca</th></tr></thead>
           <tbody>
             ${visibleItems.map((item) => {
               const canSelect = canMoveToQuarantine(item);
@@ -1665,8 +1821,9 @@ function candidatesTab() {
                 <td>${escapeHtml(cleanCandidateType(item.type))}</td>
                 <td>${compactBytes(item.size)}</td>
                 <td>${safetyBadge(item.security)}</td>
+                <td>${confidenceBadgeFor(item)}</td>
               </tr>
-            `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
+            `; }).join("") || `<tr><td colspan="6" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -2718,8 +2875,9 @@ async function loadBasics() {
     syncHiddenPathsFromQuarantine(quarantine);
     state.history = history;
     state.selectedDrive = mostUrgentDrive();
-    restoreLastScan();
+    const restoredScan = restoreLastScan();
     render();
+    if (restoredScan) refreshLoadedScanState({ toast: false }).catch(() => {});
 
     refreshUpdateState()
       .then(() => {
@@ -2850,6 +3008,7 @@ async function startScan(letter) {
   }
   state.selectedDrive = drive;
   state.scanProgress = { progress: 0, currentPath: drive?.letter || "", files: 0, skipped: 0, mappedBytes: 0, candidates: 0 };
+  state.scanComparison = null;
   state.paused = false;
 
   state.screen = "scanning";
@@ -2867,6 +3026,25 @@ async function refreshData() {
   state.quarantine = await api.listQuarantine();
   syncHiddenPathsFromQuarantine(state.quarantine);
   state.history = await api.listHistory();
+}
+
+async function refreshScanComparison() {
+  state.scanComparison = null;
+  if (!state.scanResult?.id || !api.loadScanSnapshot || isDevTestScan()) return;
+  const history = state.history?.length ? state.history : await api.listHistory();
+  const currentIndex = history.findIndex((item) => String(item.id) === String(state.scanResult.id));
+  if (currentIndex < 0) return;
+  const currentDrive = state.scanResult.drive?.letter;
+  const previous = history
+    .slice(currentIndex + 1)
+    .find((item) => item.snapshotAvailable !== false && (!currentDrive || item.drive === currentDrive));
+  if (!previous?.id) return;
+  try {
+    const snapshot = await api.loadScanSnapshot(previous.id);
+    state.scanComparison = buildScanComparison(state.scanResult, snapshot);
+  } catch {
+    state.scanComparison = null;
+  }
 }
 
 async function refreshUpdateState() {
@@ -2909,26 +3087,44 @@ async function runUpdateDownload() {
   }
 }
 
-async function openPathWithFeedback(targetPath) {
+function forgetMissingItemFromUi(targetPath, item = null) {
+  const itemPath = item?.path || targetPath;
+  if (!itemPath) return;
+  removeMissingPathFromCurrentResult(itemPath);
+  localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+  refreshScanComparison().then(render).catch(() => render());
+}
+
+async function openPathWithFeedback(targetPath, item = null) {
   if (!targetPath) {
     setToast("Caminho ausente.");
     return false;
   }
   const result = await api.openPath(targetPath);
   if (result?.ok === false) {
+    if (isMissingPathError(result.error)) {
+      forgetMissingItemFromUi(targetPath, item);
+      setToast("Esse item nao existe mais e saiu do relatorio atual.");
+      return false;
+    }
     setToast(`Não foi possível abrir: ${cleanIpcError(result.error)}`);
     return false;
   }
   return true;
 }
 
-async function showPathWithFeedback(targetPath) {
+async function showPathWithFeedback(targetPath, item = null) {
   if (!targetPath) {
     setToast("Caminho ausente.");
     return false;
   }
   const result = await api.showInFolder(targetPath);
   if (result?.ok === false) {
+    if (isMissingPathError(result.error)) {
+      forgetMissingItemFromUi(targetPath, item);
+      setToast("Esse item nao existe mais e saiu do relatorio atual.");
+      return false;
+    }
     setToast(`Não foi possível abrir no Explorer: ${cleanIpcError(result.error)}`);
     return false;
   }
@@ -2950,12 +3146,25 @@ async function ignoreItem(item) {
 function removeItemFromCurrentResult(item) {
   if (!state.scanResult || !item?.path) return;
   hidePathFromViews(item);
-  if (item.id) state.selectedIds.delete(item.id);
-  state.scanResult.candidates = (state.scanResult.candidates || []).filter((candidate) => candidate.path !== item.path);
-  state.scanResult.largeFolders = (state.scanResult.largeFolders || []).filter((folder) => folder.path !== item.path);
+  removePathFromCurrentResult(item.path, { persist: true });
+}
+
+function removePathFromCurrentResult(itemPath, options = {}) {
+  if (!state.scanResult || !itemPath) return;
+  const normalized = normalizeItemPath(itemPath);
+  const samePath = (value) => normalizeItemPath(value) === normalized;
+  const removeNested = (value) => {
+    const key = normalizeItemPath(value);
+    return key === normalized || key.startsWith(`${normalized}\\`);
+  };
+  for (const item of [...(state.scanResult.candidates || []), ...(state.scanResult.largeFolders || [])]) {
+    if (samePath(item.path) && item.id) state.selectedIds.delete(item.id);
+  }
+  state.scanResult.candidates = (state.scanResult.candidates || []).filter((candidate) => !samePath(candidate.path));
+  state.scanResult.largeFolders = (state.scanResult.largeFolders || []).filter((folder) => !samePath(folder.path));
   state.scanResult.duplicateGroups = (state.scanResult.duplicateGroups || [])
     .map((group) => {
-      const items = (group.items || []).filter((duplicate) => !isHiddenPath(duplicate));
+      const items = (group.items || []).filter((duplicate) => !removeNested(duplicate.path));
       return {
         ...group,
         items,
@@ -2964,8 +3173,44 @@ function removeItemFromCurrentResult(item) {
       };
     })
     .filter((group) => (group.items || []).length > 1);
-  if (state.selectedItem?.path === item.path) state.selectedItem = null;
-  localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+  if (samePath(state.selectedItem?.path)) state.selectedItem = null;
+  if (options.persist !== false) localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+}
+
+function removeMissingPathFromCurrentResult(itemPath) {
+  removePathFromCurrentResult(itemPath, { persist: false });
+}
+
+function scanResultPaths(result = state.scanResult) {
+  const paths = [];
+  for (const item of result?.candidates || []) if (item?.path) paths.push(item.path);
+  for (const item of result?.largeFolders || []) if (item?.path) paths.push(item.path);
+  for (const group of result?.duplicateGroups || []) {
+    for (const item of group.items || []) if (item?.path) paths.push(item.path);
+  }
+  return [...new Set(paths)];
+}
+
+async function pruneMissingScanItems(options = {}) {
+  if (!state.scanResult?.id || !api.pathsExist) return 0;
+  const paths = scanResultPaths();
+  if (!paths.length) return 0;
+  const existing = await api.pathsExist(paths);
+  const missing = paths.filter((itemPath) => existing[itemPath] === false);
+  for (const itemPath of missing) removeMissingPathFromCurrentResult(itemPath);
+  if (missing.length) {
+    localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+    await refreshScanComparison();
+    if (options.toast !== false) setToast(`${missing.length} item(ns) apagado(s) fora do DiskSnoop foram removidos deste relatorio.`);
+  }
+  return missing.length;
+}
+
+async function refreshLoadedScanState(options = {}) {
+  const removed = await pruneMissingScanItems(options);
+  if (!removed) await refreshScanComparison();
+  render();
+  return removed;
 }
 
 async function quarantineItems(items) {
@@ -3057,6 +3302,10 @@ function updateSelectField(target) {
   }
   if (field === "candidateSafety") {
     state.candidateSafety = target.value;
+    state.candidateLimit = 80;
+  }
+  if (field === "candidateConfidence") {
+    state.candidateConfidence = target.value;
     state.candidateLimit = 80;
   }
   if (field === "candidateAge") {
@@ -3154,6 +3403,7 @@ document.addEventListener("click", async (event) => {
       setToast(isViewingHistoricalReport() ? "Relatório local carregado em modo revisão." : "Último scan local carregado.");
     }
     render();
+    refreshLoadedScanState().catch(() => {});
   }
   if (action === "load-test-scan") {
     if (state.isPackaged) return;
@@ -3162,6 +3412,7 @@ document.addEventListener("click", async (event) => {
     state.screen = "app";
     state.tab = "overview";
     state.reportMode = "test";
+    state.scanComparison = null;
     state.selectedItem = null;
     clearHiddenPaths();
     state.selectedIds.clear();
@@ -3172,6 +3423,7 @@ document.addEventListener("click", async (event) => {
     if (state.screen === "app") {
       state.screen = "disks";
       state.scanResult = null;
+      state.scanComparison = null;
       state.reportMode = "none";
       state.selectedItem = null;
       clearHiddenPaths();
@@ -3299,6 +3551,17 @@ document.addEventListener("click", async (event) => {
     else items.forEach((item) => state.selectedIds.delete(item.id));
     render();
   }
+  if (action === "select-safe-plan") {
+    filteredCandidates()
+      .slice(0, state.candidateLimit)
+      .filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta")
+      .forEach((item) => state.selectedIds.add(item.id));
+    render();
+  }
+  if (action === "clear-candidate-selection") {
+    state.selectedIds.clear();
+    render();
+  }
   if (action === "show-more-candidates") {
     state.candidateLimit += 80;
     render();
@@ -3307,10 +3570,18 @@ document.addEventListener("click", async (event) => {
     state.leftoversLimit += 80;
     render();
   }
-  if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path);
+  if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path, state.selectedItem);
   if (action === "open-path") await showPathWithFeedback(target.dataset.path);
   if (action === "show-selected" && state.selectedItem) {
     try {
+      if (api.pathsExist) {
+        const exists = await api.pathsExist([state.selectedItem.path]);
+        if (exists[state.selectedItem.path] === false) {
+          forgetMissingItemFromUi(state.selectedItem.path, state.selectedItem);
+          setToast("Esse item nao existe mais e saiu do relatorio atual.");
+          return;
+        }
+      }
       const items = await api.listContents(state.selectedItem.path);
       state.contentPreview = { path: state.selectedItem.path, items };
       render();
@@ -3552,12 +3823,14 @@ document.addEventListener("click", async (event) => {
       state.screen = "app";
       state.tab = "overview";
       state.reportMode = state.history?.[0]?.id === snapshot.id ? "current" : "review";
+      state.scanComparison = null;
       state.selectedItem = null;
       state.selectedDuplicateId = "";
       state.selectedIds.clear();
       syncHiddenPathsFromQuarantine();
       localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
       render();
+      refreshLoadedScanState().catch(() => {});
       setToast(`Relatório de ${fullDate(snapshot.finishedAt)} carregado.`);
     } catch (error) {
       setToast(`Não foi possível carregar o relatório: ${cleanIpcError(error)}`);
@@ -3625,12 +3898,13 @@ api.onScanDone(async (result) => {
   state.screen = "app";
   state.tab = "overview";
   state.reportMode = "current";
+  state.scanComparison = null;
   state.selectedItem = null;
   clearHiddenPaths();
   state.selectedIds.clear();
   localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(result));
   await refreshData();
-  render();
+  await refreshLoadedScanState({ toast: false });
 });
 
 api.onScanError((payload) => {

@@ -110,6 +110,19 @@ const i18n = global.window.diskSnoopI18n;
     ["Checar sobras de apps", "Check app leftovers"],
     ["Ganho seguro", "Safe gain"],
     ["Assistente de revisão", "Review assistant"],
+    ["Comparação com scan anterior", "Compare with previous scan"],
+    ["Sem base anterior para este disco", "No previous baseline for this drive"],
+    ["Simulacao de limpeza", "Cleanup simulation"],
+    ["Selecionar plano seguro", "Select safe plan"],
+    ["Limpar selecao", "Clear selection"],
+    ["Nada selecionado para simular.", "Nothing selected to simulate."],
+    ["Esse item nao existe mais e saiu do relatorio atual.", "This item no longer exists and was removed from the current report."],
+    ["Confianca", "Confidence"],
+    ["3 item(ns) na simulacao atual.", "3 item(s) in the current simulation."],
+    ["4 item(ns) no plano seguro visivel.", "4 item(s) in the visible safe plan."],
+    ["Desde ontem", "Since ontem"],
+    ["+2 candidato(s)", "+2 candidate(s)"],
+    ["2 item(ns) apagado(s) fora do DiskSnoop foram removidos deste relatorio.", "2 item(s) deleted outside DiskSnoop were removed from this report."],
     ["Comece pelo seguro", "Start with safe items"],
     ["Revise duplicados", "Review duplicates"],
     ["Cheque sobras de apps", "Check app leftovers"],
@@ -244,8 +257,8 @@ const i18n = global.window.diskSnoopI18n;
   assert.equal(i18n.translate("en-US", "boot.openingApp"), "Opening app...");
   assert.equal(i18n.translate("pt-BR", "settings.title"), "Configurações");
   assert.equal(i18n.translate("en-US", "settings.title"), "Settings");
-  assert.equal(i18n.translate("pt-BR", "sidebar.version", { version: "1.2.0" }), "Versão v1.2.0");
-  assert.equal(i18n.translate("en-US", "sidebar.version", { version: "1.2.0" }), "Version v1.2.0");
+  assert.equal(i18n.translate("pt-BR", "sidebar.version", { version: "1.3.0" }), "Versão v1.3.0");
+  assert.equal(i18n.translate("en-US", "sidebar.version", { version: "1.3.0" }), "Version v1.3.0");
   assert.equal(i18n.translate("en-US", "missing.translation.key"), "missing.translation.key");
   assert.equal(i18n.translatePlaceholder("en-US", "Buscar arquivo ou caminho..."), "Search file or path...");
   assert.equal(i18n.translatePlaceholder("en-US", "Buscar app ou caminho..."), "Search app or path...");

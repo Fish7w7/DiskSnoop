@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("diskScope", {
   openPath: (targetPath) => ipcRenderer.invoke("path:open", targetPath),
   showInFolder: (targetPath) => ipcRenderer.invoke("path:showInFolder", targetPath),
   listContents: (targetPath) => ipcRenderer.invoke("path:listContents", targetPath),
+  pathsExist: (targetPaths) => ipcRenderer.invoke("path:existsMany", targetPaths),
   listInstalledApps: () => ipcRenderer.invoke("apps:listInstalled"),
   addIgnoredPath: (targetPath) => ipcRenderer.invoke("ignore:add", targetPath),
   startScan: (options) => ipcRenderer.invoke("scan:start", options),
