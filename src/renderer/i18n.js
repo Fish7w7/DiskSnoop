@@ -59,7 +59,10 @@
       "Uso por categoria": "Usage by category",
       "Ganho seguro": "Safe gain",
       "Plano seguro disponível": "Safe plan available",
+      "Plano seguro": "Safe plan",
       "Simular plano seguro": "Simulate safe plan",
+      "Desfazer": "Undo",
+      "O tempo para desfazer terminou. O item continua disponível na Quarentena.": "The undo window ended. The item is still available in Quarantine.",
       "Ver todos os candidatos": "View all candidates",
       "Próximos passos": "Next steps",
       "Uma ordem simples para revisar o que mais importa.": "A simple order for reviewing what matters most.",
@@ -320,6 +323,16 @@
       "Possível duplicado": "Possible duplicate",
       "Este grupo foi montado por nome e tamanho. Abra os caminhos antes de decidir, porque arquivos diferentes podem parecer iguais por fora.": "This group was built by name and size. Open the paths before deciding, because different files can look identical from the outside.",
       "Aparência": "Appearance",
+      "Aparência e idioma": "Appearance and language",
+      "Personalize como o DiskSnoop aparece e se comunica.": "Customize how DiskSnoop looks and communicates.",
+      "Análise": "Analysis",
+      "Defina os limites e detectores usados nos próximos scans.": "Set the thresholds and detectors used in future scans.",
+      "Escolha onde os itens reversíveis ficam protegidos.": "Choose where reversible items stay protected.",
+      "Controle o que entra e o que fica fora das análises.": "Control what is included in and excluded from scans.",
+      "Gerencie apenas os dados locais criados pelo DiskSnoop.": "Manage only the local data created by DiskSnoop.",
+      "Consulte a versão instalada e procure novas versões.": "Check the installed version and look for new releases.",
+      "As opções de canal, verificação automática e instalação continuam na tela dedicada de Atualização.": "Channel, automatic checks, and installation options remain on the dedicated Update screen.",
+      "Abrir Atualização": "Open Update",
       "Idioma": "Language",
       "Limites do scan": "Scan limits",
       "Detectores": "Detectors",
@@ -607,6 +620,10 @@
         "App data: $1"
       ],
       [
+        "^Versão instalada: (.+)$",
+        "Installed version: $1"
+      ],
+      [
         "^Nome parecido com app instalado: (.+)\\.$",
         "Name similar to installed app: $1."
       ],
@@ -805,6 +822,18 @@
       [
         "^(\\d+) item\\(ns\\) adicionados à simulação\\. Nenhum arquivo foi alterado\\.$",
         "$1 item(s) added to the simulation. No files were changed."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) movido\\(s\\) para a quarentena\\.$",
+        "$1 item(s) moved to quarantine."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) restaurado\\(s\\)\\.$",
+        "$1 item(s) restored."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) restaurado\\(s\\)\\. Não foi possível desfazer o restante: (.+)$",
+        "$1 item(s) restored. Could not undo the remaining items: $2"
       ],
       [
         "^(\\d+) item\\(ns\\) na simulacao atual\\.$",
