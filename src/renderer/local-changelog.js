@@ -1,4 +1,98 @@
 window.diskSnoopLocalChangelog = {
+  "1.3.1": {
+    "pt-BR": {
+      title: "DiskSnoop 1.3.1",
+      sections: [
+        {
+          title: "Defesa em profundidade",
+          items: [
+            "Falhas ou timeouts no Get-AppxPackage agora bloqueiam dados de aplicativos por padrão, sem transformar incerteza em permissão de limpeza.",
+            "O inventário de pacotes é consultado uma vez por sessão e reutilizado para evitar lentidão em listas grandes.",
+            "Pastas protegidas recebem selo e explicação visível nas telas de análise.",
+            "Ações em lote podem solicitar ao Windows um ponto de restauração antes de mover itens para quarentena."
+          ]
+        },
+        {
+          title: "Rastreabilidade e confirmação",
+          items: [
+            "Movimentos, restaurações, exclusões e bloqueios são registrados no log local de auditoria.",
+            "Exclusões vindas de AppData, ProgramData ou áreas de programas exigem a confirmação reforçada APAGAR.",
+            "Um teste integrado cobre o caminho completo do scanner até o bloqueio de exclusão permanente."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.3.1",
+      sections: [
+        {
+          title: "Defense in depth",
+          items: [
+            "Get-AppxPackage failures or timeouts now block application data by default instead of turning uncertainty into cleanup permission.",
+            "The package inventory is queried once per session and reused to avoid slowing down large lists.",
+            "Protected folders now display a visible badge and explanation in analysis views.",
+            "Batch actions can ask Windows to create a restore point before moving items to quarantine."
+          ]
+        },
+        {
+          title: "Traceability and confirmation",
+          items: [
+            "Moves, restores, deletions, and blocked attempts are written to a local audit log.",
+            "Deletions originating from AppData, ProgramData, or program areas require the stronger APAGAR confirmation.",
+            "An integration test covers the complete path from scanner detection to permanent-deletion blocking."
+          ]
+        }
+      ]
+    }
+  },
+  "1.3.1": {
+  "pt-BR": {
+    title: "DiskSnoop 1.3.1",
+    sections: [
+      {
+        title: "Proteção de dados do sistema",
+        items: [
+          "Pastas ativas do Microsoft Store e de apps UWP agora são reconhecidas e protegidas em todas as camadas do app.",
+          "AppData\\Local\\Packages, AppData\\Local\\Microsoft\\WindowsApps e AppData\\Local\\Microsoft\\OneDrive não podem mais ser movidas para quarentena ou excluídas.",
+          "Nova categoria 'Componente do sistema' identifica esses itens sem oferecer opção de quarentena.",
+          "O DiskSnoop agora consulta os pacotes UWP instalados (Get-AppxPackage) para reconhecer apps ativos com mais precisão.",
+          "Itens antigos vindos de áreas protegidas não podem mais ser excluídos permanentemente, mesmo que já estivessem na quarentena.",
+          "Restauração de itens protegidos que já estavam em quarentena continua funcionando normalmente."
+        ]
+      },
+      {
+        title: "Por que essa versão existe",
+        items: [
+          "Corrige um cenário real em que pastas do Microsoft Store apareciam como candidatas de limpeza, podendo causar mau funcionamento do Store após exclusão.",
+          "As regras de proteção agora vêm de uma única fonte, usada pelo scanner, pela interface e pelo processo principal, evitando divergência entre as camadas."
+        ]
+      }
+    ]
+  },
+  "en-US": {
+    title: "DiskSnoop 1.3.1",
+    sections: [
+      {
+        title: "System data protection",
+        items: [
+          "Active Microsoft Store and UWP app data is now recognized and protected across every layer of the app.",
+          "AppData\\Local\\Packages, AppData\\Local\\Microsoft\\WindowsApps, and AppData\\Local\\Microsoft\\OneDrive can no longer be moved to quarantine or deleted.",
+          "A new 'System component' category flags these items with no quarantine option available.",
+          "DiskSnoop now queries installed UWP packages (Get-AppxPackage) to recognize active apps more accurately.",
+          "Old items originating from protected areas can no longer be permanently deleted, even if already in quarantine.",
+          "Restoring previously quarantined protected items continues to work as expected."
+        ]
+      },
+      {
+        title: "Why this release exists",
+        items: [
+          "Fixes a real scenario where Microsoft Store folders showed up as cleanup candidates, which could break the Store after deletion.",
+          "Protection rules now come from a single source shared by the scanner, the UI, and the main process, preventing drift between layers."
+        ]
+      }
+    ]
+  }
+},
   "1.3.0": {
     "pt-BR": {
       title: "DiskSnoop 1.3.0",

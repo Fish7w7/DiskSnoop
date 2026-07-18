@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const fscb = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { isSensitiveWindowsPath } = require("../main/quarantine-safety");
 
 let paused = false;
 let cancelled = false;
@@ -10,18 +11,6 @@ let lastProgressAt = 0;
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
-
-const sensitiveSegments = [
-  "\\windows\\",
-  "\\windows",
-  "\\system volume information\\",
-  "\\$recycle.bin\\",
-  "\\program files\\",
-  "\\program files (x86)\\",
-  "\\programdata\\package cache\\",
-  "\\programdata\\microsoft\\windows\\",
-  "\\drivers\\"
-];
 
 const safeReviewFolders = new Set(["node_modules", "dist", "build", ".next", ".cache", ".turbo", "coverage", "target", "obj"]);
 const devFolders = new Set(["node_modules", ".venv", "dist", "build", ".next", ".turbo", "coverage", "target", "bin", "obj"]);
@@ -59,8 +48,7 @@ function toLowerPath(value) {
 }
 
 function isSensitive(itemPath) {
-  const normalized = toLowerPath(itemPath).replaceAll("/", "\\");
-  return sensitiveSegments.some((segment) => normalized.includes(segment));
+  return isSensitiveWindowsPath(itemPath);
 }
 
 function ageDays(date) {
@@ -397,17 +385,7 @@ async function scanDir(dirPath) {
 
   const modifiedAt = record.modifiedAt ? record.modifiedAt.toISOString() : null;
   if (record.size >= config.largeFolderSize) {
-    state.largeFolders.push({
-      id: `folder-${state.largeFolders.length}-${Buffer.from(record.path).toString("base64").slice(0, 14)}`,
-      name: record.name,
-      path: record.path,
-      size: record.size,
-      files: record.files,
-      modifiedAt,
-      risk: record.risk,
-      reason: "Pasta acima do limite configurado para pastas grandes.",
-      children: record.children
-    });
+    state.largeFolders.push(buildLargeFolderItem(record, state.largeFolders.length, modifiedAt));
   }
 
   const kind = folderType(record.name, record.path);
@@ -425,6 +403,24 @@ async function scanDir(dirPath) {
   }
 
   return record;
+}
+
+function buildLargeFolderItem(record, index = 0, modifiedAt = null) {
+  const sensitive = isSensitive(record?.path);
+  return {
+    id: `folder-${index}-${Buffer.from(record.path).toString("base64").slice(0, 14)}`,
+    name: record.name,
+    path: record.path,
+    size: record.size,
+    files: record.files,
+    modifiedAt: modifiedAt || (record.modifiedAt instanceof Date ? record.modifiedAt.toISOString() : record.modifiedAt || null),
+    risk: sensitive ? "Sensivel" : record.risk,
+    security: sensitive ? "Sensivel" : "Verificar antes",
+    reason: sensitive
+      ? "Componente protegido mostrado apenas para transparência de uso do disco."
+      : "Pasta acima do limite configurado para pastas grandes.",
+    children: record.children || []
+  };
 }
 
 async function start(payload) {
@@ -482,3 +478,7 @@ process.on("message", (message) => {
     setTimeout(() => process.exit(0), 20);
   }
 });
+
+module.exports = {
+  buildLargeFolderItem
+};

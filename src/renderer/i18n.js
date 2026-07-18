@@ -118,6 +118,7 @@
       "Excluir permanentemente": "Delete permanently",
       "Remover registro ausente": "Remove missing record",
       "Origem não registrada": "Origin not recorded",
+      "Origem protegida": "Protected origin",
       "Em quarentena": "In quarantine",
       "Arquivo ausente": "Missing file",
       "Restaurado": "Restored",
@@ -142,7 +143,39 @@
       "analisadas": "analyzed",
       "possíveis sobras": "possible leftovers",
       "ligadas a apps instalados": "linked to installed apps",
+      "componentes protegidos": "protected components",
+      "verificação indisponível": "verification unavailable",
       "verificar": "to review",
+      "Componente do sistema": "System component",
+      "Componente protegido": "Protected component",
+      "🔒 Componente protegido": "🔒 Protected component",
+      "Protegido": "Protected",
+      "Verificação indisponível": "Verification unavailable",
+      "Componente protegido do sistema": "Protected system component",
+      "Este caminho guarda dados ativos do Windows, da Microsoft Store ou de outro aplicativo integrado. O DiskSnoop permite apenas abrir e inspecionar o local.": "This path stores active data from Windows, Microsoft Store, or another integrated application. DiskSnoop only allows opening and inspecting the location.",
+      "Ação bloqueada": "Action blocked",
+      "Descoberta AppX indisponível": "AppX discovery unavailable",
+      "O DiskSnoop não conseguiu confirmar os pacotes da Microsoft Store. Por segurança, dados em AppData ficam bloqueados até uma nova inicialização com a consulta disponível.": "DiskSnoop could not confirm Microsoft Store packages. For safety, AppData remains blocked until a new startup completes the query successfully.",
+      "Verificação de apps indisponível": "App verification unavailable",
+      "A consulta de pacotes instalados falhou ou não respondeu. O DiskSnoop bloqueou este item por padrão em vez de assumir que ele é uma sobra.": "The installed-package query failed or did not respond. DiskSnoop blocked this item by default instead of assuming it is a leftover.",
+      "Proteção fail-safe": "Fail-safe protection",
+      "Reinicie o aplicativo para tentar a consulta novamente. Enquanto ela não for confirmada, este item não pode ser movido ou excluído pelo DiskSnoop.": "Restart the application to retry the query. Until it is confirmed, this item cannot be moved or deleted by DiskSnoop.",
+      "Proteção adicional do Windows": "Additional Windows protection",
+      "Deseja tentar criar um ponto de restauração antes da operação: lote de quarentena?": "Try to create a restore point before this quarantine batch?",
+      "Deseja tentar criar um ponto de restauração antes da operação: exclusão permanente?": "Try to create a restore point before this permanent deletion?",
+      "O Windows pode exigir permissão de administrador ou limitar a frequência de criação.": "Windows may require administrator permission or limit how often restore points can be created.",
+      "Pontos de restauração não substituem a quarentena e não garantem recuperar arquivos pessoais ou dados de aplicativos.": "Restore points do not replace quarantine and do not guarantee recovery of personal files or application data.",
+      "Criar ponto": "Create restore point",
+      "Continuar sem ponto": "Continue without restore point",
+      "Ponto de restauração não criado": "Restore point not created",
+      "Você pode cancelar a operação e criar um ponto manualmente nas configurações de Proteção do Sistema.": "You can cancel and manually create a restore point in System Protection settings.",
+      "Cancelar operação": "Cancel operation",
+      "Ponto de restauração criado pelo Windows.": "Windows restore point created.",
+      "Este item veio de uma área usada por aplicativos. A exclusão exige confirmação reforçada e não pode ser desfeita pelo DiskSnoop.": "This item came from an application data area. Deletion requires stronger confirmation and cannot be undone by DiskSnoop.",
+      "Confira novamente o caminho original antes de continuar.": "Check the original path again before continuing.",
+      "Log de auditoria:": "Audit log:",
+      "Este item nunca entra em quarentena ou exclusão em lote. Não apague seu conteúdo manualmente, pois isso pode impedir que aplicativos do Windows funcionem.": "This item never enters quarantine or bulk deletion. Do not delete its contents manually, as this can prevent Windows applications from working.",
+      "Este item veio de dados ativos do Windows ou de um aplicativo instalado. A exclusão permanente foi bloqueada; restaure o item ou abra a quarentena para revisão manual.": "This item came from active Windows data or an installed application. Permanent deletion was blocked; restore the item or open quarantine for manual review.",
       "Local": "Location",
       "Pasta": "Folder",
       "Arquivo": "File",
@@ -478,6 +511,14 @@
       [
         "^(\\d+) finalizados$",
         "$1 finished"
+      ],
+      [
+        "^(\\d+) componentes protegidos$",
+        "$1 protected components"
+      ],
+      [
+        "^(\\d+) verificação indisponível$",
+        "$1 verification unavailable"
       ],
       [
         "^(.+) protegidos$",
@@ -862,6 +903,10 @@
       [
         "^(\\d+) verificar$",
         "$1 to review"
+      ],
+      [
+        "^Log de auditoria: (.+)$",
+        "Audit log: $1"
       ]
     ]
   }

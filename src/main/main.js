@@ -6,11 +6,16 @@ const crypto = require("node:crypto");
 const https = require("node:https");
 const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
+const { createInstalledAppsInventory } = require("./installed-apps");
 const {
   assertCanCrossVolumeMove,
+  assertPermanentDeletionAllowed,
   assertNotInternalPath: assertNotInternalQuarantinePath,
   assertTrustedQuarantineRecord,
+  isProtectedAppDataPath,
+  isElevatedDeletionRisk,
   isSensitiveWindowsPath,
+  pathProtection,
   quarantineFolderName,
   quarantineRecordRoot,
   sameOrInsidePath
@@ -107,6 +112,21 @@ async function writeJson(fileName, value) {
   return value;
 }
 
+async function appendAuditEntry(action, details = {}) {
+  try {
+    await fs.mkdir(app.getPath("userData"), { recursive: true });
+    const entry = {
+      timestamp: new Date().toISOString(),
+      action,
+      appVersion: app.getVersion(),
+      ...details
+    };
+    await fs.appendFile(dataFile("audit-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8");
+  } catch (error) {
+    console.error("DiskSnoop audit log failure:", error);
+  }
+}
+
 async function getSettings() {
   const saved = await readJson("settings.json", {});
   const savedUpdate = saved.update || {};
@@ -130,12 +150,16 @@ async function getSettings() {
   };
 }
 
-function runPowerShell(script) {
+function runPowerShell(script, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(
       "powershell.exe",
       ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 },
+      {
+        windowsHide: true,
+        timeout: options.timeout || 15000,
+        maxBuffer: options.maxBuffer || 1024 * 1024
+      },
       (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
@@ -146,6 +170,8 @@ function runPowerShell(script) {
     );
   });
 }
+
+const installedAppsInventory = createInstalledAppsInventory({ runPowerShell });
 
 async function getDrives() {
   if (process.platform !== "win32") {
@@ -1079,6 +1105,7 @@ ipcMain.handle("app:paths", async () => {
   return {
     userData,
     defaultQuarantine,
+    auditLog: dataFile("audit-log.jsonl"),
     isPackaged: app.isPackaged,
     version: app.getVersion(),
     channel: parseVersion(app.getVersion())?.prerelease ? "Beta" : "Estável",
@@ -1173,30 +1200,38 @@ ipcMain.handle("path:existsMany", async (_event, targetPaths = []) => {
   return Object.fromEntries(unique.map((itemPath) => [itemPath, fscb.existsSync(itemPath)]));
 });
 
-ipcMain.handle("apps:listInstalled", async () => {
-  if (process.platform !== "win32") return [];
+ipcMain.on("path:isProtected", (event, targetPath) => {
+  event.returnValue = isSensitiveWindowsPath(targetPath);
+});
+
+ipcMain.on("path:protection", (event, targetPath) => {
+  event.returnValue = pathProtection(targetPath);
+});
+
+ipcMain.on("path:deletionRisk", (event, targetPath) => {
+  event.returnValue = isElevatedDeletionRisk({ originalPath: targetPath });
+});
+
+ipcMain.handle("apps:listInstalled", async () => installedAppsInventory.load());
+
+ipcMain.handle("system:createRestorePoint", async () => {
+  if (process.platform !== "win32") {
+    return ipcError(new Error("Pontos de restauração estão disponíveis apenas no Windows."));
+  }
+  const description = `DiskSnoop v${app.getVersion()} - antes da quarentena`;
   const script = `
-$paths = @(
-  "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
-  "HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
-  "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
-)
-$paths | ForEach-Object {
-  Get-ItemProperty $_ -ErrorAction SilentlyContinue
-} | Where-Object { $_.DisplayName } | Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation | ConvertTo-Json -Depth 3
+$ErrorActionPreference = "Stop"
+Checkpoint-Computer -Description "${description.replaceAll('"', '')}" -RestorePointType "MODIFY_SETTINGS"
+[PSCustomObject]@{ ok = $true; description = "${description.replaceAll('"', '')}" } | ConvertTo-Json -Compress
 `;
   try {
-    const output = await runPowerShell(script);
-    if (!output) return [];
-    const parsed = JSON.parse(output);
-    return (Array.isArray(parsed) ? parsed : [parsed]).map((appInfo) => ({
-      name: appInfo.DisplayName || "",
-      version: appInfo.DisplayVersion || "",
-      publisher: appInfo.Publisher || "",
-      installLocation: appInfo.InstallLocation || ""
-    }));
-  } catch {
-    return [];
+    const output = await runPowerShell(script, { timeout: 60000 });
+    const result = output ? JSON.parse(output) : { ok: true, description };
+    await appendAuditEntry("restore-point-created", { description });
+    return ipcOk(result);
+  } catch (error) {
+    await appendAuditEntry("restore-point-failed", { description, error: error.message });
+    return ipcError(new Error("O Windows não criou o ponto de restauração. O recurso pode estar desativado, exigir administrador ou já ter criado um ponto recentemente."));
   }
 });
 
@@ -1263,8 +1298,22 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
     records.unshift(record);
     await saveQuarantine(records);
     await updateLatestHistory({ scanId: record.scanId, movedToQuarantineDelta: record.size });
+    await appendAuditEntry("quarantine-move", {
+      result: "success",
+      originalPath: record.originalPath,
+      quarantinePath: record.quarantinePath,
+      size: record.size,
+      scanId: record.scanId
+    });
     return ipcOk(record);
   } catch (error) {
+    await appendAuditEntry("quarantine-move", {
+      result: "blocked-or-failed",
+      originalPath: item?.path || "",
+      size: item?.size || 0,
+      scanId: item?.scanId || "",
+      error: error.message
+    });
     return ipcError(error);
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);
@@ -1273,15 +1322,17 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
 
 ipcMain.handle("quarantine:restore", async (_event, id) => {
   protectedActionCount += 1;
+  let auditRecord = null;
   try {
     const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
+    auditRecord = record || null;
     if (!record) throw new Error("Item de quarentena nao encontrado.");
     if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para restauracao.");
     if (!record.originalPath) throw new Error("Este item nao tem origem registrada. Abra a quarentena e restaure manualmente.");
     await assertSafeQuarantineRecord(record);
     assertNotInternalPath(record.originalPath, path.dirname(record.quarantinePath));
-    if (isSensitiveWindowsPath(record.originalPath)) {
+    if (isSensitiveWindowsPath(record.originalPath) && !isProtectedAppDataPath(record.originalPath)) {
       throw new Error("O caminho original fica em area sensivel. Por seguranca, restaure manualmente pelo Explorer.");
     }
     if (!fscb.existsSync(record.quarantinePath)) {
@@ -1303,8 +1354,21 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
     record.restoredAt = new Date().toISOString();
     await saveQuarantine(records);
     await updateLatestHistory({ scanId: record.scanId, restoredFromQuarantineDelta: record.size || 0 });
+    await appendAuditEntry("quarantine-restore", {
+      result: "success",
+      originalPath: record.originalPath,
+      quarantinePath: record.quarantinePath,
+      size: record.size,
+      scanId: record.scanId
+    });
     return ipcOk(record);
   } catch (error) {
+    await appendAuditEntry("quarantine-restore", {
+      result: "blocked-or-failed",
+      originalPath: auditRecord?.originalPath || "",
+      quarantinePath: auditRecord?.quarantinePath || "",
+      error: error.message
+    });
     return ipcError(error);
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);
@@ -1313,12 +1377,15 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
 
 ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
   protectedActionCount += 1;
+  let auditRecord = null;
   try {
     const records = await syncedQuarantine();
     const record = records.find((entry) => entry.id === id);
+    auditRecord = record || null;
     if (!record) throw new Error("Item de quarentena nao encontrado.");
     if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para exclusao permanente.");
     await assertSafeQuarantineRecord(record);
+    assertPermanentDeletionAllowed(record);
     if (!fscb.existsSync(record.quarantinePath)) {
       record.status = "Arquivo ausente";
       record.missingAt = new Date().toISOString();
@@ -1337,8 +1404,22 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
     record.deletedAt = new Date().toISOString();
     await saveQuarantine(records);
     await updateLatestHistory({ scanId: record.scanId, permanentlyDeletedDelta: record.size || 0 });
+    await appendAuditEntry("quarantine-delete-permanent", {
+      result: "success",
+      originalPath: record.originalPath,
+      quarantinePath: record.quarantinePath,
+      size: record.size,
+      scanId: record.scanId
+    });
     return ipcOk(record);
   } catch (error) {
+    await appendAuditEntry("quarantine-delete-permanent", {
+      result: "blocked-or-failed",
+      originalPath: auditRecord?.originalPath || "",
+      quarantinePath: auditRecord?.quarantinePath || "",
+      size: auditRecord?.size || 0,
+      error: error.message
+    });
     return ipcError(error);
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);

@@ -1,5 +1,23 @@
 const path = require("node:path");
 
+const PROTECTED_APP_DATA_PATH_SEGMENTS = Object.freeze([
+  "\\appdata\\local\\packages",
+  "\\appdata\\local\\microsoft\\windowsapps",
+  "\\appdata\\local\\microsoft\\onedrive"
+]);
+
+const SENSITIVE_WINDOWS_PATH_SEGMENTS = Object.freeze([
+  "\\windows",
+  "\\system volume information",
+  "\\$recycle.bin",
+  "\\program files",
+  "\\program files (x86)",
+  "\\programdata\\package cache",
+  "\\programdata\\microsoft\\windows",
+  "\\drivers",
+  ...PROTECTED_APP_DATA_PATH_SEGMENTS
+]);
+
 function pathKey(targetPath) {
   return path.normalize(path.resolve(String(targetPath || ""))).replace(/[\\/]+$/, "").replaceAll("/", "\\").toLowerCase();
 }
@@ -11,17 +29,62 @@ function sameOrInsidePath(targetPath, rootPath) {
   return target === root || target.startsWith(`${root}\\`);
 }
 
-function isSensitiveWindowsPath(itemPath) {
+function matchesProtectedSegment(itemPath, segments) {
   const normalized = String(itemPath || "").replaceAll("/", "\\").toLowerCase();
-  return normalized.includes("\\windows\\")
-    || normalized.endsWith("\\windows")
-    || normalized.includes("\\system volume information\\")
-    || normalized.includes("\\$recycle.bin\\")
+  return segments.some((segment) => (
+    normalized === segment.slice(1)
+      || normalized.endsWith(segment)
+      || normalized.includes(`${segment}\\`)
+  ));
+}
+
+function isProtectedAppDataPath(itemPath) {
+  return matchesProtectedSegment(itemPath, PROTECTED_APP_DATA_PATH_SEGMENTS);
+}
+
+function isSensitiveWindowsPath(itemPath) {
+  return matchesProtectedSegment(itemPath, SENSITIVE_WINDOWS_PATH_SEGMENTS);
+}
+
+function pathProtection(itemPath) {
+  if (isProtectedAppDataPath(itemPath)) {
+    return {
+      protected: true,
+      code: "protected-app-data",
+      label: "Componente protegido",
+      reason: "Dados ativos do Windows, da Microsoft Store, do OneDrive ou de outro aplicativo integrado."
+    };
+  }
+  if (isSensitiveWindowsPath(itemPath)) {
+    return {
+      protected: true,
+      code: "protected-windows-path",
+      label: "Componente protegido",
+      reason: "Área sensível do Windows ou de programas instalados."
+    };
+  }
+  return { protected: false, code: "", label: "", reason: "" };
+}
+
+function canMoveToQuarantineByPolicy(item) {
+  return Boolean(item?.path)
+    && !isSensitiveWindowsPath(item.path)
+    && !["Sensivel", "Sensível"].includes(item.security)
+    && !["Sensivel", "Sensível"].includes(item.risk);
+}
+
+function assertPermanentDeletionAllowed(record) {
+  if (record?.originalPath && isSensitiveWindowsPath(record.originalPath)) {
+    throw new Error("Este item veio de uma area protegida do Windows ou de um app instalado. O DiskSnoop nao permite a exclusao permanente; restaure ou revise manualmente.");
+  }
+}
+
+function isElevatedDeletionRisk(record) {
+  const normalized = String(record?.originalPath || "").replaceAll("/", "\\").toLowerCase();
+  return normalized.includes("\\appdata\\")
+    || normalized.includes("\\programdata\\")
     || normalized.includes("\\program files\\")
-    || normalized.includes("\\program files (x86)\\")
-    || normalized.includes("\\programdata\\package cache\\")
-    || normalized.includes("\\programdata\\microsoft\\windows\\")
-    || normalized.includes("\\drivers\\");
+    || normalized.includes("\\program files (x86)\\");
 }
 
 function quarantineFolderName(folderPath) {
@@ -63,12 +126,19 @@ function assertCanCrossVolumeMove(stat) {
 }
 
 module.exports = {
+  PROTECTED_APP_DATA_PATH_SEGMENTS,
+  SENSITIVE_WINDOWS_PATH_SEGMENTS,
   pathKey,
   sameOrInsidePath,
+  pathProtection,
+  canMoveToQuarantineByPolicy,
+  assertPermanentDeletionAllowed,
+  isElevatedDeletionRisk,
   isSensitiveWindowsPath,
   quarantineFolderName,
   quarantineRecordRoot,
   assertNotInternalPath,
   assertTrustedQuarantineRecord,
-  assertCanCrossVolumeMove
+  assertCanCrossVolumeMove,
+  isProtectedAppDataPath
 };

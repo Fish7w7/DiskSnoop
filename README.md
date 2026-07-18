@@ -48,8 +48,12 @@ Interface bilíngue em Português (Brasil) e English, configurável nas preferê
 ## Segurança
 
 - Itens sensíveis do Windows aparecem no mapa de uso, mas não entram como candidatos normais de limpeza.
+- Se a descoberta de pacotes da Microsoft Store falhar, dados de aplicativos ficam bloqueados por padrão (fail closed).
+- O inventário AppX é consultado uma vez por sessão e reutilizado durante a análise.
 - Mover para quarentena preserva metadados para restauração completa.
 - A exclusão permanente só acontece por ação explícita do usuário.
+- Ações em lote podem solicitar a criação de um ponto de restauração do Windows quando o recurso estiver disponível.
+- Movimentos, restaurações, exclusões e tentativas bloqueadas são registrados em `audit-log.jsonl` na pasta de dados do app.
 - Updates não são aplicados durante scan ativo ou ações de quarentena em andamento.
 - Configurações, histórico, snapshots e quarentena ficam na pasta local do usuário e não são apagados por updates ou uninstall.
 

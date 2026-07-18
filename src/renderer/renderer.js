@@ -1,9 +1,18 @@
 const api = window.diskScope;
+if (!api) {
+  const bootStatus = document.querySelector("[data-boot-status]");
+  if (bootStatus) {
+    bootStatus.textContent = document.documentElement.lang === "en-US"
+      ? "Could not connect to the main process. Restart the app and check the terminal."
+      : "Não foi possível conectar ao processo principal. Reinicie o app e verifique o terminal.";
+  }
+  throw new Error("DiskSnoop preload failed: window.diskScope is unavailable.");
+}
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.3.0";
+let APP_VERSION_LABEL = "1.3.1";
 
 const state = {
   screen: "welcome",
@@ -23,6 +32,7 @@ const state = {
   quarantine: [],
   history: [],
   installedApps: [],
+  appInventory: { appxReliable: false, appxError: "Inventário AppX ainda não confirmado.", loaded: false },
   isPackaged: false,
   appPaths: null,
   contentPreview: null,
@@ -126,6 +136,7 @@ const iconPaths = {
   folder: '<path d="M3 6h7l2 2h9v11H3z"/>',
   clipboard: '<path d="M8 4h8l1 3H7z"/><path d="M6 6H5v15h14V6h-1"/><path d="M9 11h6M9 15h6"/>',
   shield: '<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-5"/>',
+  lock: '<rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/>',
   settings: '<path d="M12.2 2h-.4l-1 3.1a7.5 7.5 0 0 0-1.7.7L6.2 4.3l-1.9 1.9 1.5 2.9c-.3.5-.5 1.1-.7 1.7L2 11.8v.4l3.1 1c.2.6.4 1.2.7 1.7l-1.5 2.9 1.9 1.9 2.9-1.5c.5.3 1.1.5 1.7.7l1 3.1h.4l1-3.1c.6-.2 1.2-.4 1.7-.7l2.9 1.5 1.9-1.9-1.5-2.9c.3-.5.5-1.1.7-1.7l3.1-1v-.4l-3.1-1a7.5 7.5 0 0 0-.7-1.7l1.5-2.9-1.9-1.9-2.9 1.5a7.5 7.5 0 0 0-1.7-.7z"/><circle cx="12" cy="12" r="3"/>',
   disk: '<path d="M5 6c0-2 14-2 14 0v12c0 2-14 2-14 0z"/><path d="M5 6c0 2 14 2 14 0"/><circle cx="12" cy="14" r="2"/>',
   file: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/>',
@@ -1401,6 +1412,7 @@ function riskWeight(value) {
 }
 
 function folderRisk(item) {
+  if (isProtectedUiPath(item.path)) return ["Protegido", "high"];
   if (item.risk === "Sensivel" || item.risk === "Sensível") return ["Alto", "high"];
   if (item.name.toLowerCase().includes("appdata") || item.path.toLowerCase().includes("\\appdata\\")) return ["Alto", "high"];
   if (item.path.toLowerCase().includes("\\downloads\\") || item.name.toLowerCase().includes("videos")) return ["Médio", "medium"];
@@ -1427,9 +1439,16 @@ function foldersTab() {
           <tbody>
             ${items.slice(0, 60).map((item) => {
               const [label, kind] = folderRisk(item);
+              const protection = protectedPathInfo(item.path);
               return `
                 <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-folder" data-id="${escapeHtml(item.id)}">
-                  <td class="name-cell"><span class="folder-icon">${icon("folder")}</span><span>${escapeHtml(item.name)}</span></td>
+                  <td class="name-cell" title="${escapeHtml(item.name)}">
+                    <div class="name-cell-layout">
+                      <span class="folder-icon">${icon("folder")}</span>
+                      <span class="name-cell-copy">${escapeHtml(item.name)}</span>
+                      ${protection.protected ? `<span class="protection-marker" title="${escapeHtml(`Protegido: ${protection.reason}`)}" aria-label="Componente protegido">${icon("lock")}</span>` : ""}
+                    </div>
+                  </td>
                   <td>${compactBytes(item.size)}</td>
                   <td>${relativeDate(item.modifiedAt)}</td>
                   <td>${badge(label, kind)}</td>
@@ -1453,6 +1472,7 @@ function folderDetails(item) {
       <span class="detail-icon">${icon("folder")}</span>
       <div class="detail-copy">
         <h3>${escapeHtml(item.path)}</h3>
+        ${isProtectedUiPath(item.path) ? reviewCallout("Componente protegido", protectedPathInfo(item.path).reason, "shield", "warning") : ""}
         ${reviewCallout("Resumo seguro", item.reason || "Pasta grande detectada no scan.", "folder")}
         ${reviewCallout("O que conferir", guidance.text, guidance.icon, guidance.tone)}
         ${childrenSummary(item)}
@@ -1806,6 +1826,7 @@ function candidatesTab() {
           <tbody>
             ${visibleItems.map((item) => {
               const canSelect = canMoveToQuarantine(item);
+              const protection = protectedPathInfo(item.path);
               return `
               <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-candidate" data-id="${escapeHtml(item.id)}">
                 <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) && canSelect ? "checked" : ""} ${canSelect ? "" : "disabled"}></td>
@@ -1815,6 +1836,7 @@ function candidatesTab() {
                     <span class="candidate-copy">
                       <strong>${escapeHtml(item.name)}</strong>
                       <small>${escapeHtml(item.path)}</small>
+                      ${protection.protected ? `<span class="candidate-protection" title="${escapeHtml(`Protegido: ${protection.reason}`)}">${icon("lock")}<span>Protegido</span></span>` : ""}
                     </span>
                   </div>
                 </td>
@@ -1914,15 +1936,17 @@ function candidateReviewGuidance(item) {
 }
 
 function isProtectedUiPath(itemPath) {
-  const lower = String(itemPath || "").toLowerCase().replaceAll("/", "\\");
-  return lower.includes("\\windows\\")
-    || lower.endsWith("\\windows")
-    || lower.includes("\\system volume information\\")
-    || lower.includes("\\program files\\")
-    || lower.includes("\\program files (x86)\\")
-    || lower.includes("\\programdata\\package cache\\")
-    || lower.includes("\\programdata\\microsoft\\windows\\")
-    || lower.includes("\\drivers\\");
+  return protectedPathInfo(itemPath).protected;
+}
+
+function protectedPathInfo(itemPath) {
+  if (api?.getPathProtection) return api.getPathProtection(itemPath);
+  const protectedPath = Boolean(api?.isProtectedPath?.(itemPath));
+  return {
+    protected: protectedPath,
+    label: protectedPath ? "Componente protegido" : "",
+    reason: protectedPath ? "Área protegida pelo DiskSnoop." : ""
+  };
 }
 
 function canMoveToQuarantine(item) {
@@ -2186,7 +2210,9 @@ function filteredLeftovers() {
         "App não encontrado?": 1,
         "Verificar manualmente": 2,
         "App instalado": 3,
-        "Nome parecido": 4
+        "Nome parecido": 4,
+        "Componente do sistema": 5,
+        "Verificação indisponível": 6
       };
       const statusA = statusOrder[leftoverStatus(a)[0]] ?? 9;
       const statusB = statusOrder[leftoverStatus(b)[0]] ?? 9;
@@ -2196,9 +2222,11 @@ function filteredLeftovers() {
 }
 
 function leftoverStatus(item) {
+  if (isProtectedUiPath(item?.path)) return ["Componente do sistema", "high"];
   const match = matchingInstalledApp(item);
   if (match) return ["App instalado", "low"];
   const lower = item.path.toLowerCase();
+  if (lower.includes("\\appdata\\") && !state.appInventory.appxReliable) return ["Verificação indisponível", "high"];
   if (lower.includes("\\program files\\")) return ["Verificar manualmente", "medium"];
   if (isGenericAppDataFolder(item.name)) return ["Verificar manualmente", "medium"];
   if (lower.includes("\\appdata\\")) return ["Possível sobra", "medium"];
@@ -2207,6 +2235,13 @@ function leftoverStatus(item) {
 }
 
 function matchingInstalledApp(item) {
+  const itemName = String(item?.name || "").toLowerCase();
+  const packagedMatch = state.installedApps.find((appInfo) => {
+    const familyName = String(appInfo.packageFamilyName || "").toLowerCase();
+    const fullName = String(appInfo.packageFullName || "").toLowerCase();
+    return (familyName && itemName === familyName) || (fullName && itemName === fullName);
+  });
+  if (packagedMatch) return packagedMatch;
   const folderName = normalizeName(item.name);
   if (!folderName || folderName.length < 4 || isGenericAppDataFolder(item.name)) return null;
   return state.installedApps.find((appInfo) => {
@@ -2231,7 +2266,9 @@ function leftoversTab() {
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   const possible = allItems.filter((item) => leftoverStatus(item)[0] === "Possível sobra").length;
   const installed = allItems.filter((item) => leftoverStatus(item)[0] === "App instalado").length;
-  const manual = allItems.length - possible - installed;
+  const protectedCount = allItems.filter((item) => leftoverStatus(item)[0] === "Componente do sistema").length;
+  const unavailable = allItems.filter((item) => leftoverStatus(item)[0] === "Verificação indisponível").length;
+  const manual = allItems.length - possible - installed - protectedCount - unavailable;
   return `
     <section>
       <div class="page-heading">
@@ -2240,15 +2277,18 @@ function leftoversTab() {
       </div>
       ${historicalReportNote()}
       ${safetyNote("Achados conservadores", "Esses achados são pistas, não confirmação de sobra. Só itens marcados como possível sobra ficam disponíveis para quarentena normal; o restante deve ser aberto e revisado manualmente.")}
+      ${state.appInventory.appxReliable ? "" : safetyNote("Descoberta AppX indisponível", "O DiskSnoop não conseguiu confirmar os pacotes da Microsoft Store. Por segurança, dados em AppData ficam bloqueados até uma nova inicialização com a consulta disponível.", "shield", "warning")}
       <div class="leftover-summary">
         <span><strong>${allItems.length}</strong> analisadas</span>
         <span><strong>${possible}</strong> possíveis sobras</span>
         <span><strong>${installed}</strong> ligadas a apps instalados</span>
+        <span><strong>${protectedCount}</strong> componentes protegidos</span>
+        <span><strong>${unavailable}</strong> verificação indisponível</span>
         <span><strong>${manual}</strong> verificar</span>
       </div>
       <div class="filters-row leftovers-filters">
         <label class="search-box">${icon("search")}<input data-field="leftoversSearch" value="${escapeHtml(state.leftoversSearch)}" placeholder="Buscar app ou caminho..."></label>
-        ${selectControl("leftoversStatus", ["Todos", "Possível sobra", "App não encontrado?", "Verificar manualmente", "App instalado"], state.leftoversStatus)}
+        ${selectControl("leftoversStatus", ["Todos", "Possível sobra", "App não encontrado?", "Verificar manualmente", "App instalado", "Componente do sistema", "Verificação indisponível"], state.leftoversStatus)}
         ${selectControl("leftoversLocation", ["Todos", "AppData Local", "AppData Roaming", "ProgramData", "Program Files", "Program Files (x86)"], state.leftoversLocation)}
       </div>
       <section class="panel table-panel">
@@ -2320,6 +2360,28 @@ function leftoverDetails(item) {
 }
 
 function leftoverReviewSummary(status, match) {
+  if (status === "Verificação indisponível") {
+    return {
+      title: "Verificação de apps indisponível",
+      text: "A consulta de pacotes instalados falhou ou não respondeu. O DiskSnoop bloqueou este item por padrão em vez de assumir que ele é uma sobra.",
+      icon: "shield",
+      tone: "warning",
+      reviewTitle: "Proteção fail-safe",
+      reviewText: "Reinicie o aplicativo para tentar a consulta novamente. Enquanto ela não for confirmada, este item não pode ser movido ou excluído pelo DiskSnoop.",
+      reviewTone: "warning"
+    };
+  }
+  if (status === "Componente do sistema") {
+    return {
+      title: "Componente protegido do sistema",
+      text: "Este caminho guarda dados ativos do Windows, da Microsoft Store ou de outro aplicativo integrado. O DiskSnoop permite apenas abrir e inspecionar o local.",
+      icon: "shield",
+      tone: "warning",
+      reviewTitle: "Ação bloqueada",
+      reviewText: "Este item nunca entra em quarentena ou exclusão em lote. Não apague seu conteúdo manualmente, pois isso pode impedir que aplicativos do Windows funcionem.",
+      reviewTone: "warning"
+    };
+  }
   if (match) {
     return {
       title: "App instalado encontrado",
@@ -2359,7 +2421,8 @@ function quarantineTab() {
   const selected = selectedQuarantine();
   if (selected && state.selectedQuarantineId !== selected.id) state.selectedQuarantineId = selected.id;
   const canRestoreSelected = selected?.status === "Em quarentena" && Boolean(selected.originalPath);
-  const canDeleteSelected = selected?.status === "Em quarentena";
+  const protectedOriginal = Boolean(selected?.originalPath && isProtectedUiPath(selected.originalPath));
+  const canDeleteSelected = selected?.status === "Em quarentena" && !protectedOriginal;
   const emptyMessage = state.quarantineFilter === "Ativos"
     ? "Nenhum item ativo na quarentena. Registros antigos ficam em Ausentes ou Finalizados."
     : "Nenhum item neste filtro.";
@@ -2410,6 +2473,7 @@ function quarantineTab() {
           <p>Origem: ${escapeHtml(selected.originalPath || "Origem não registrada")}</p>
           <p>Quarentena: ${escapeHtml(selected.quarantinePath || "-")}</p>
           <p>Status: ${escapeHtml(selected.status || "Em quarentena")}</p>
+          ${protectedOriginal ? reviewCallout("Origem protegida", "Este item veio de dados ativos do Windows ou de um aplicativo instalado. A exclusão permanente foi bloqueada; restaure o item ou abra a quarentena para revisão manual.", "shield", "warning") : ""}
           ${selected.recovered ? reviewCallout("Origem não registrada", "Este item foi encontrado na pasta de quarentena, mas o registro original não estava no histórico do DiskSnoop. Você pode abrir ou excluir permanentemente, mas a restauração automática fica indisponível sem o caminho original.", "shield", "warning") : ""}
           <div class="detail-actions">
             <button class="secondary" data-action="open-quarantine-item" data-path="${escapeHtml(selected.quarantinePath || "")}" ${selected.status !== "Em quarentena" ? "disabled" : ""}>${icon("folder")}Abrir na quarentena</button>
@@ -2778,6 +2842,7 @@ function settingsTab() {
           <span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span>
         </div>
         <p>Dados do app: ${escapeHtml(dataLocation)}</p>
+        <p>Log de auditoria: ${escapeHtml(state.appPaths?.auditLog || `${dataLocation}\\audit-log.jsonl`)}</p>
         <div class="detail-actions">
           <button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button>
           <button class="secondary" data-action="clear-local-scan" ${hasCachedScan ? "" : "disabled"}>${icon("trash")}Limpar último scan local</button>
@@ -2886,12 +2951,18 @@ async function loadBasics() {
       .catch(() => {});
 
     api.listInstalledApps()
-      .then((apps) => {
-        state.installedApps = apps;
+      .then((inventory) => {
+        state.installedApps = Array.isArray(inventory) ? inventory : inventory?.apps || [];
+        state.appInventory = {
+          appxReliable: Array.isArray(inventory) ? false : inventory?.appxReliable === true,
+          appxError: Array.isArray(inventory) ? "Formato antigo sem confirmação AppX." : inventory?.appxError || "",
+          loaded: true
+        };
         if (state.screen === "app" && state.tab === "leftovers") render();
       })
       .catch(() => {
         state.installedApps = [];
+        state.appInventory = { appxReliable: false, appxError: "Falha ao consultar aplicativos instalados.", loaded: true };
       });
   } catch (error) {
     const app = $("#app");
@@ -2945,6 +3016,7 @@ function createTestScan() {
     mk("test-dist-1", "dist", `${root}Projetos\\AppAntigo\\dist`, 1.2 * GB, "Projetos dev", "Seguro revisar", "Pasta de build recriavel pelo processo de desenvolvimento.", 90),
     mk("test-setup-1", "setup_old.exe", `${root}Users\\Voce\\Downloads\\setup_old.exe`, 900 * MB, "Instaladores antigos", "Seguro revisar", "Instalador antigo detectado em Downloads.", 210),
     mk("test-log-1", "logs", `${root}Apps\\Logs`, 620 * MB, "Logs grandes", "Verificar antes", "Logs antigos e grandes detectados.", 180),
+    mk("test-store-package", "Microsoft.WindowsStore_8wekyb3d8bbwe", `${root}Users\\Voce\\AppData\\Local\\Packages\\Microsoft.WindowsStore_8wekyb3d8bbwe`, 7.8 * GB, "Pasta", "Sensivel", "Componente protegido da Microsoft Store.", 0),
     mk("test-video-1", "aula-backup.mp4", `${root}Users\\Voce\\Videos\\aula-backup.mp4`, 1.4 * GB, "Arquivos grandes", "Verificar antes", "Arquivo grande detectado.", 40),
     mk("test-video-2", "aula-backup.mp4", `${root}Users\\Voce\\Downloads\\aula-backup.mp4`, 1.4 * GB, "Arquivos grandes", "Verificar antes", "Arquivo grande detectado.", 120)
   ];
@@ -2952,7 +3024,8 @@ function createTestScan() {
     mk("test-folder-downloads", "Downloads", `${root}Users\\Voce\\Downloads`, 24 * GB, "Pasta", "Verificar antes", "Contem muitos instaladores, zips e videos.", 1),
     mk("test-folder-projects", "Projetos", `${root}Projetos`, 21 * GB, "Pasta", "Seguro revisar", "Projetos de desenvolvimento ocupando espaco relevante.", 0),
     mk("test-folder-node", "node_modules", `${root}Projetos\\AppAntigo\\node_modules`, 5.6 * GB, "Pasta", "Seguro revisar", "Dependencias Node recriaveis.", 90),
-    mk("test-folder-appdata", "AppData/Local", `${root}Users\\Voce\\AppData\\Local`, 6 * GB, "Pasta", "Verificar antes", "Area de dados de aplicativos. Revise com cuidado.", 0)
+    mk("test-folder-appdata", "AppData/Local", `${root}Users\\Voce\\AppData\\Local`, 6 * GB, "Pasta", "Verificar antes", "Area de dados de aplicativos. Revise com cuidado.", 0),
+    mk("test-folder-store", "Microsoft.WindowsStore_8wekyb3d8bbwe", `${root}Users\\Voce\\AppData\\Local\\Packages\\Microsoft.WindowsStore_8wekyb3d8bbwe`, 7.8 * GB, "Pasta", "Sensivel", "Componente protegido mostrado apenas para transparência.", 0)
   ];
   return {
     id: `test-${Date.now()}`,
@@ -3250,6 +3323,7 @@ async function quarantineItems(items) {
     icon: "shield"
   });
   if (!ok) return;
+  if (valid.length > 1 && !(await offerRestorePoint("lote de quarentena"))) return;
   let movedCount = 0;
   for (const item of valid) {
     try {
@@ -3266,6 +3340,46 @@ async function quarantineItems(items) {
   }
   await refreshData();
   setToast("Item(ns) movido(s) para quarentena.");
+}
+
+async function offerRestorePoint(contextLabel) {
+  if (!api.createRestorePoint) return true;
+  const wantsRestorePoint = await confirmModal({
+    title: "Proteção adicional do Windows",
+    message: `Deseja tentar criar um ponto de restauração antes da operação: ${contextLabel}?`,
+    details: [
+      "O Windows pode exigir permissão de administrador ou limitar a frequência de criação.",
+      "Pontos de restauração não substituem a quarentena e não garantem recuperar arquivos pessoais ou dados de aplicativos."
+    ],
+    confirmText: "Criar ponto",
+    cancelText: "Continuar sem ponto",
+    icon: "shield"
+  });
+  if (!wantsRestorePoint) return true;
+  try {
+    await api.createRestorePoint();
+    setToast("Ponto de restauração criado pelo Windows.");
+    return true;
+  } catch (error) {
+    return confirmModal({
+      title: "Ponto de restauração não criado",
+      message: cleanIpcError(error),
+      details: ["Você pode cancelar a operação e criar um ponto manualmente nas configurações de Proteção do Sistema."],
+      confirmText: "Continuar sem ponto",
+      cancelText: "Cancelar operação",
+      icon: "shield",
+      variant: "danger"
+    });
+  }
+}
+
+function elevatedDeletionRisk(record) {
+  if (api.isElevatedDeletionRisk) return api.isElevatedDeletionRisk(record?.originalPath || "");
+  const originalPath = String(record?.originalPath || "").toLowerCase().replaceAll("/", "\\");
+  return originalPath.includes("\\appdata\\")
+    || originalPath.includes("\\programdata\\")
+    || originalPath.includes("\\program files\\")
+    || originalPath.includes("\\program files (x86)\\");
 }
 
 function persistSettingsSoon() {
@@ -3644,15 +3758,21 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "delete-quarantine") {
     const record = state.quarantine.find((entry) => entry.id === id);
+    const highRisk = elevatedDeletionRisk(record);
+    const confirmationWord = highRisk ? "APAGAR" : "EXCLUIR";
     const ok = await confirmModal({
       title: "Excluir permanentemente",
-      message: "Esta ação não pode ser desfeita pelo DiskSnoop.",
+      message: highRisk
+        ? "Este item veio de uma área usada por aplicativos. A exclusão exige confirmação reforçada e não pode ser desfeita pelo DiskSnoop."
+        : "Esta ação não pode ser desfeita pelo DiskSnoop.",
+      details: highRisk ? ["Confira novamente o caminho original antes de continuar."] : [],
       confirmText: "Excluir",
       icon: "trash",
       variant: "danger",
-      requireText: "EXCLUIR"
+      requireText: confirmationWord
     });
     if (!ok) return;
+    if (!(await offerRestorePoint("exclusão permanente"))) return;
     try {
       await api.deletePermanent(id);
       if (record?.originalPath) hidePathFromViews({ path: record.originalPath });

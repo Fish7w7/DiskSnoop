@@ -5,6 +5,8 @@ const {
   assertCanCrossVolumeMove,
   assertNotInternalPath,
   assertTrustedQuarantineRecord,
+  isProtectedAppDataPath,
+  isElevatedDeletionRisk,
   isSensitiveWindowsPath,
   quarantineFolderName,
   quarantineRecordRoot,
@@ -23,7 +25,24 @@ test("detecta caminhos sensiveis do Windows", () => {
   assert.equal(isSensitiveWindowsPath("C:\\Windows\\System32\\drivers\\etc\\hosts"), true);
   assert.equal(isSensitiveWindowsPath("C:\\Program Files\\App\\cache"), true);
   assert.equal(isSensitiveWindowsPath("C:\\ProgramData\\Microsoft\\Windows\\Start Menu"), true);
+  assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\AppData\\Local\\Packages\\Microsoft.WindowsStore_8wekyb3d8bbwe\\LocalState\\cache.dat"), true);
+  assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\AppData\\Local\\Packages"), true);
+  assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps\\winget.exe"), true);
+  assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\AppData\\Local\\Microsoft\\OneDrive\\settings"), true);
+  assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\AppData\\Local\\Packages-Backup\\file.bin"), false);
   assert.equal(isSensitiveWindowsPath("C:\\Users\\User\\Downloads\\setup.exe"), false);
+});
+
+test("distingue dados AppData protegidos para permitir somente recuperacao", () => {
+  assert.equal(isProtectedAppDataPath("C:\\Users\\User\\AppData\\Local\\Packages\\Microsoft.WindowsStore_8wekyb3d8bbwe"), true);
+  assert.equal(isProtectedAppDataPath("C:\\Windows\\System32"), false);
+  assert.equal(isProtectedAppDataPath("C:\\Users\\User\\AppData\\Local\\Packages-Backup"), false);
+});
+
+test("eleva confirmacao para origens de dados de aplicativos", () => {
+  assert.equal(isElevatedDeletionRisk({ originalPath: "C:\\Users\\User\\AppData\\Roaming\\Vendor\\cache" }), true);
+  assert.equal(isElevatedDeletionRisk({ originalPath: "C:\\ProgramData\\Vendor\\cache" }), true);
+  assert.equal(isElevatedDeletionRisk({ originalPath: "C:\\Users\\User\\Downloads\\old.iso" }), false);
 });
 
 test("reconhece caminho igual ou filho sem confundir prefixos parecidos", () => {
