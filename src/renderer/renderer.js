@@ -57,8 +57,10 @@ const state = {
   leftoversStatus: "Possível sobra",
   leftoversLocation: "Todos",
   leftoversLimit: 80,
+  settingsSection: "appearance",
   paused: false,
   toast: "",
+  quarantineUndo: null,
   update: {
     status: "idle",
     currentVersion: APP_VERSION_LABEL,
@@ -468,16 +470,21 @@ function applyTheme() {
   rememberLanguage();
 }
 
-function setToast(message) {
-  state.toast = message;
+function setToast(messageOrOptions) {
+  const toast = typeof messageOrOptions === "string"
+    ? { message: messageOrOptions }
+    : { ...(messageOrOptions || {}) };
+  state.toast = toast.message ? toast : "";
   render();
-  if (message) {
+  if (toast.message) {
+    const duration = Number(toast.duration || (toast.action ? 8000 : 3500));
     setTimeout(() => {
-      if (state.toast === message) {
+      if (state.toast === toast) {
         state.toast = "";
+        if (toast.action === "undo-quarantine") state.quarantineUndo = null;
         render();
       }
-    }, 3500);
+    }, duration);
   }
 }
 
@@ -541,6 +548,13 @@ function safetyBadge(value) {
   if (value === "Provavel removivel" || value === "Provável removível") return badge("Prov.", "warn");
   if (value === "Sensivel" || value === "Sensível") return badge("Alto", "high");
   return badge("Médio", "medium");
+}
+
+function candidatePrimaryStatus(item) {
+  if (!canMoveToQuarantine(item)) return badge("Protegido", "high");
+  if (confidenceLevel(item)[0] === "Alta" && isLowRiskCandidate(item)) return badge("Plano seguro", "low");
+  if (item.security === "Provavel removivel" || item.security === "Provável removível") return badge("Provável", "warn");
+  return badge("Revisar", "neutral");
 }
 
 function confidenceBadgeFor(item, context = "candidate") {
@@ -729,14 +743,11 @@ function sidebar() {
           </button>
         `).join("")}
       </nav>
-      <section class="sidebar-info">
-        <div class="sidebar-info-copy">
-          <strong>DiskSnoop</strong>
-          <span>${escapeHtml(t("sidebar.version", { version: APP_VERSION_LABEL }))}</span>
-          <p>${escapeHtml(t("sidebar.tagline"))}</p>
-        </div>
-        <span class="sidebar-info-icon" aria-hidden="true">${icon("database")}</span>
-      </section>
+      <footer class="sidebar-info" aria-label="DiskSnoop v${escapeHtml(APP_VERSION_LABEL)}">
+        <span>DiskSnoop</span>
+        <span aria-hidden="true">·</span>
+        <span>v${escapeHtml(APP_VERSION_LABEL)}</span>
+      </footer>
     </aside>
   `;
 }
@@ -885,6 +896,17 @@ function scanningScreen() {
   `;
 }
 
+function toastOverlay() {
+  const toast = typeof state.toast === "string" ? { message: state.toast } : state.toast;
+  if (!toast?.message) return "";
+  return `
+    <div class="toast ${escapeHtml(toast.tone || "")}" role="status" aria-live="polite">
+      <span>${escapeHtml(toast.message)}</span>
+      ${toast.action ? `<button data-action="${escapeHtml(toast.action)}">${escapeHtml(toast.actionLabel || "Desfazer")}</button>` : ""}
+    </div>
+  `;
+}
+
 function appShell() {
   return `
     <div class="window">
@@ -895,7 +917,7 @@ function appShell() {
       </div>
       ${contentPreviewOverlay()}
       ${modalOverlay()}
-      ${state.toast ? `<div class="toast">${escapeHtml(state.toast)}</div>` : ""}
+      ${toastOverlay()}
     </div>
   `;
 }
@@ -1750,7 +1772,7 @@ function selectionSimulationPanel(selectedItems, visibleItems) {
   const previewItems = selectedItems.length ? selectedItems : safePlan.slice(0, 8);
   const previewSize = selectedItems.length ? selectedSize : safePlanSize;
   return `
-    <section class="panel simulation-panel">
+    <section class="simulation-panel">
       <div class="simulation-main">
         <span class="metric-icon">${icon("shield")}</span>
         <div>
@@ -1782,7 +1804,7 @@ function candidatesTab() {
   const visibleItems = items.slice(0, state.candidateLimit);
   const selectableVisibleItems = visibleItems.filter(canMoveToQuarantine);
   return `
-    <section>
+    <section class="candidates-view">
       <div class="page-heading">
         <h1>Candidatos à Limpeza</h1>
         <p>${items.length} itens visíveis de ${totalCandidates}. O filtro padrão mostra achados revisáveis e evita itens que exigem cautela maior.</p>
@@ -1812,11 +1834,10 @@ function candidatesTab() {
       </div>
       <section class="panel table-panel candidates-panel">
         <table class="candidates-table">
-          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Selo</th><th>Confianca</th></tr></thead>
+          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Status</th></tr></thead>
           <tbody>
             ${visibleItems.map((item) => {
               const canSelect = canMoveToQuarantine(item);
-              const protection = protectedPathInfo(item.path);
               return `
               <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-candidate" data-id="${escapeHtml(item.id)}">
                 <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) && canSelect ? "checked" : ""} ${canSelect ? "" : "disabled"}></td>
@@ -1826,16 +1847,14 @@ function candidatesTab() {
                     <span class="candidate-copy">
                       <strong>${escapeHtml(item.name)}</strong>
                       <small>${escapeHtml(item.path)}</small>
-                      ${protection.protected ? `<span class="candidate-protection" title="${escapeHtml(`Protegido: ${protection.reason}`)}">${icon("lock")}<span>Protegido</span></span>` : ""}
                     </span>
                   </div>
                 </td>
                 <td>${escapeHtml(cleanCandidateType(item.type))}</td>
                 <td>${compactBytes(item.size)}</td>
-                <td>${safetyBadge(item.security)}</td>
-                <td>${confidenceBadgeFor(item)}</td>
+                <td>${candidatePrimaryStatus(item)}</td>
               </tr>
-            `; }).join("") || `<tr><td colspan="6" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
+            `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -2417,7 +2436,7 @@ function quarantineTab() {
     ? "Nenhum item ativo na quarentena. Registros antigos ficam em Ausentes ou Finalizados."
     : "Nenhum item neste filtro.";
   return `
-    <section>
+    <section class="quarantine-view">
       <div class="page-heading">
         <h1>Quarentena</h1>
         <p>${summary.active} itens ativos. A lista principal mostra apenas o que ainda pode ser restaurado ou excluído.</p>
@@ -2439,8 +2458,8 @@ function quarantineTab() {
         <span><strong>${summary.finalized}</strong> finalizados</span>
         <span><strong>${compactBytes(totalQuarantined())}</strong> protegidos</span>
       </div>
-      <section class="panel table-panel">
-        <table>
+      <section class="panel table-panel quarantine-panel">
+        <table class="quarantine-table">
           <thead><tr><th class="check-col"></th><th>Item</th><th>Origem</th><th>Tamanho</th><th>Data</th><th>Status</th></tr></thead>
           <tbody>
             ${visibleItems.map((item) => `
@@ -2732,41 +2751,38 @@ function settingsTab() {
   const defaultQuarantine = state.appPaths?.defaultQuarantine || "Pasta de dados do DiskSnoop";
   const quarantineLocation = state.settings.quarantinePath || defaultQuarantine;
   const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
-  return `
-    <section>
-      <div class="page-heading">
-        <h1>${escapeHtml(t("settings.title"))}</h1>
-        <p>${escapeHtml(t("settings.subtitle"))}</p>
-      </div>
-
-      <h2>${escapeHtml(t("settings.appearance"))}</h2>
-      <section class="panel settings-card">
-        <div>
-          <p>${escapeHtml(t("settings.currentTheme"))}</p>
-          <span>${escapeHtml(t("settings.themeHelp"))}</span>
-        </div>
+  const section = state.settingsSection || "appearance";
+  const categories = [
+    ["appearance", "Aparência", "settings"],
+    ["analysis", "Análise", "search"],
+    ["quarantine", "Quarentena", "shield"],
+    ["scope", "Escopo do scan", "folder"],
+    ["maintenance", "Manutenção", "database"],
+    ["updates", "Atualização", "refresh"]
+  ];
+  const content = {
+    appearance: `
+      <div class="settings-detail-heading"><span>${icon("settings")}</span><div><h2>Aparência e idioma</h2><p>Personalize como o DiskSnoop aparece e se comunica.</p></div></div>
+      <section class="settings-card">
+        <div><p>${escapeHtml(t("settings.currentTheme"))}</p><span>${escapeHtml(t("settings.themeHelp"))}</span></div>
         ${selectControl("theme", availableThemes, themeLabels[state.settings.theme] || "Claro")}
       </section>
-
-      <h2>${escapeHtml(t("settings.language"))}</h2>
-      <section class="panel settings-card">
-        <div>
-          <p>${escapeHtml(t("settings.languageLabel"))}</p>
-          <span>${escapeHtml(t("settings.languageHelp"))}</span>
-        </div>
+      <section class="settings-card">
+        <div><p>${escapeHtml(t("settings.languageLabel"))}</p><span>${escapeHtml(t("settings.languageHelp"))}</span></div>
         ${selectControl("language", languageOptions, state.settings.language || "pt-BR")}
       </section>
-
-      <h2>Limites do scan</h2>
-      <section class="panel settings-card vertical">
+    `,
+    analysis: `
+      <div class="settings-detail-heading"><span>${icon("search")}</span><div><h2>Análise</h2><p>Defina os limites e detectores usados nos próximos scans.</p></div></div>
+      <section class="settings-card vertical">
+        <h3>Limites do scan</h3>
         ${settingSelect("Arquivo grande a partir de:", "largeFileSize", [["250 MB", 250 * MB], ["500 MB", 500 * MB], ["1 GB", GB], ["5 GB", 5 * GB], ["10 GB", 10 * GB]], state.settings.largeFileSize)}
         ${settingSelect("Pasta grande a partir de:", "largeFolderSize", [["500 MB", 500 * MB], ["1 GB", GB], ["2 GB", 2 * GB], ["5 GB", 5 * GB], ["10 GB", 10 * GB]], state.settings.largeFolderSize)}
         ${settingSelect("Possível duplicado a partir de:", "duplicateFileSize", [["10 MB", 10 * MB], ["50 MB", 50 * MB], ["100 MB", 100 * MB], ["500 MB", 500 * MB], ["1 GB", GB]], state.settings.duplicateFileSize || 50 * MB)}
         ${settingSelect("Considerar arquivo antigo após:", "oldFileDays", [["30 dias", 30], ["90 dias", 90], ["180 dias", 180], ["365 dias", 365]], state.settings.oldFileDays)}
       </section>
-
-      <h2>Detectores</h2>
-      <section class="panel settings-card vertical">
+      <section class="settings-card vertical">
+        <h3>Detectores</h3>
         ${checkLine("Detectar node_modules", "detectNodeModules")}
         ${checkLine("Detectar builds e caches", "detectBuildCaches")}
         ${checkLine("Detectar instaladores antigos", "detectOldInstallers")}
@@ -2776,13 +2792,11 @@ function settingsTab() {
         ${checkLine("Confirmar duplicados com hash SHA-256", "verifyDuplicateHashes")}
         <span>Itens sensíveis como Windows, System32, drivers e programas ativos continuam fora dos candidatos normais.</span>
       </section>
-
-      <h2>Quarentena</h2>
-      <section class="panel settings-card vertical">
-        <div class="settings-stats">
-          <span><strong>${activeQuarantine.length}</strong> itens em quarentena</span>
-          <span><strong>${compactBytes(totalQuarantined())}</strong> protegidos</span>
-        </div>
+    `,
+    quarantine: `
+      <div class="settings-detail-heading"><span>${icon("shield")}</span><div><h2>Quarentena</h2><p>Escolha onde os itens reversíveis ficam protegidos.</p></div></div>
+      <section class="settings-card vertical">
+        <div class="settings-stats"><span><strong>${activeQuarantine.length}</strong> itens em quarentena</span><span><strong>${compactBytes(totalQuarantined())}</strong> protegidos</span></div>
         <p>Local atual: ${escapeHtml(quarantineLocation)}</p>
         <div class="detail-actions">
           <button class="secondary" data-action="choose-quarantine">${icon("folder")}Alterar pasta</button>
@@ -2791,56 +2805,52 @@ function settingsTab() {
         </div>
         <span>Para mover pastas grandes, prefira uma quarentena no mesmo disco do item. O DiskSnoop pode bloquear pastas entre discos para evitar cópia parcial seguida de remoção.</span>
       </section>
-
-      <h2>Escopo do scan</h2>
-      <section class="panel settings-card vertical">
-        <div class="scope-head">
-          <div>
-            <p>Pastas incluídas: <strong>${includedCount}</strong></p>
-            <span>Quando houver inclusões, o scan varre somente essas pastas dentro do disco escolhido.</span>
-          </div>
-          <button class="secondary" data-action="add-included-folder">${icon("folder")}Adicionar pasta</button>
-        </div>
+    `,
+    scope: `
+      <div class="settings-detail-heading"><span>${icon("folder")}</span><div><h2>Escopo do scan</h2><p>Controle o que entra e o que fica fora das análises.</p></div></div>
+      <section class="settings-card vertical">
+        <div class="scope-head"><div><p>Pastas incluídas: <strong>${includedCount}</strong></p><span>Quando houver inclusões, o scan varre somente essas pastas dentro do disco escolhido.</span></div><button class="secondary" data-action="add-included-folder">${icon("folder")}Adicionar pasta</button></div>
         ${pathList(state.settings.includedPaths || [], "included")}
-        <div class="detail-actions compact-actions">
-          <button class="secondary" data-action="clear-included" ${includedCount ? "" : "disabled"}>${icon("trash")}Limpar incluídas</button>
-        </div>
+        <div class="detail-actions compact-actions"><button class="secondary" data-action="clear-included" ${includedCount ? "" : "disabled"}>${icon("trash")}Limpar incluídas</button></div>
       </section>
-
-      <h2>Ignorados</h2>
-      <section class="panel settings-card vertical">
-        <div class="scope-head">
-          <div>
-            <p>Pastas ignoradas: <strong>${ignoredCount}</strong></p>
-            <span>Itens ignorados não entram nos próximos scans nem nas sugestões.</span>
-          </div>
-          <button class="secondary" data-action="add-ignored-folder">${icon("folder")}Adicionar pasta</button>
-        </div>
+      <section class="settings-card vertical">
+        <div class="scope-head"><div><p>Pastas ignoradas: <strong>${ignoredCount}</strong></p><span>Itens ignorados não entram nos próximos scans nem nas sugestões.</span></div><button class="secondary" data-action="add-ignored-folder">${icon("folder")}Adicionar pasta</button></div>
         ${ignoredPresetCards()}
         ${pathList(state.settings.ignoredPaths || [], "ignored")}
-        <div class="detail-actions compact-actions">
-          <button class="secondary" data-action="show-ignored" ${ignoredCount ? "" : "disabled"}>${icon("list")}Ver ignorados</button>
-          <button class="secondary" data-action="reset-ignored" ${ignoredCount ? "" : "disabled"}>${icon("reset")}Resetar ignorados</button>
-        </div>
+        <div class="detail-actions compact-actions"><button class="secondary" data-action="show-ignored" ${ignoredCount ? "" : "disabled"}>${icon("list")}Ver ignorados</button><button class="secondary" data-action="reset-ignored" ${ignoredCount ? "" : "disabled"}>${icon("reset")}Resetar ignorados</button></div>
       </section>
-
-      <h2>Manutenção</h2>
-      <section class="panel settings-card vertical">
-        <div class="settings-stats">
-          <span><strong>${state.history.length}</strong> scans no histórico</span>
-          <span><strong>${state.scanResult ? "1" : "0"}</strong> scan carregado nesta sessão</span>
-          <span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span>
-        </div>
+    `,
+    maintenance: `
+      <div class="settings-detail-heading"><span>${icon("database")}</span><div><h2>Manutenção</h2><p>Gerencie apenas os dados locais criados pelo DiskSnoop.</p></div></div>
+      <section class="settings-card vertical">
+        <div class="settings-stats"><span><strong>${state.history.length}</strong> scans no histórico</span><span><strong>${state.scanResult ? "1" : "0"}</strong> scan carregado nesta sessão</span><span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span></div>
         <p>Dados do app: ${escapeHtml(dataLocation)}</p>
         <p>Log de auditoria: ${escapeHtml(state.appPaths?.auditLog || `${dataLocation}\\audit-log.jsonl`)}</p>
-        <div class="detail-actions">
-          <button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button>
-          <button class="secondary" data-action="clear-local-scan" ${hasCachedScan ? "" : "disabled"}>${icon("trash")}Limpar último scan local</button>
-          <button class="secondary" data-action="clear-history">${icon("trash")}Limpar histórico</button>
-          <button class="outline-danger" data-action="reset-settings">${icon("reset")}Restaurar configurações</button>
-        </div>
+        <div class="detail-actions"><button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button><button class="secondary" data-action="clear-local-scan" ${hasCachedScan ? "" : "disabled"}>${icon("trash")}Limpar último scan local</button><button class="secondary" data-action="clear-history">${icon("trash")}Limpar histórico</button><button class="outline-danger" data-action="reset-settings">${icon("reset")}Restaurar configurações</button></div>
         <span>Essas ações limpam apenas dados do DiskSnoop. Elas não apagam arquivos analisados nem itens fora da quarentena.</span>
       </section>
+    `,
+    updates: `
+      <div class="settings-detail-heading"><span>${icon("refresh")}</span><div><h2>Atualização</h2><p>Consulte a versão instalada e procure novas versões.</p></div></div>
+      <section class="settings-card vertical settings-update-shortcut">
+        <p>Versão instalada: <strong>v${escapeHtml(APP_VERSION_LABEL)}</strong></p>
+        <span>As opções de canal, verificação automática e instalação continuam na tela dedicada de Atualização.</span>
+        <div class="detail-actions"><button class="primary" data-action="tab" data-tab="updates">${icon("refresh")}Abrir Atualização</button></div>
+      </section>
+    `
+  };
+  return `
+    <section class="settings-view">
+      <div class="page-heading">
+        <h1>${escapeHtml(t("settings.title"))}</h1>
+        <p>${escapeHtml(t("settings.subtitle"))}</p>
+      </div>
+      <div class="settings-layout">
+        <nav class="settings-categories" aria-label="Categorias de configurações">
+          ${categories.map(([id, label, iconName]) => `<button class="${section === id ? "active" : ""}" data-action="settings-section" data-section="${id}">${icon(iconName)}<span>${escapeHtml(label)}</span></button>`).join("")}
+        </nav>
+        <main class="settings-detail">${content[section] || content.appearance}</main>
+      </div>
     </section>
   `;
 }
@@ -3300,24 +3310,16 @@ async function quarantineItems(items) {
       icon: "shield"
     });
   }
-  const crossVolumeCount = valid.filter(isQuarantineOnDifferentVolume).length;
-  const ok = await confirmModal({
-    title: "Mover para quarentena",
-    message: `Mover ${valid.length} item(ns) para a quarentena?`,
-    details: [
-      "Nada será excluído permanentemente.",
-      "Você poderá restaurar o item se algo parecer errado.",
-      ...(crossVolumeCount ? ["A quarentena está em outro disco para parte da seleção; pastas entre volumes podem ser bloqueadas por segurança."] : [])
-    ],
-    confirmText: "Mover",
-    icon: "shield"
-  });
-  if (!ok) return;
-  if (valid.length > 1 && !(await offerRestorePoint("lote de quarentena"))) return;
+  const totalSize = valid.reduce((sum, item) => sum + Number(item.size || 0), 0);
+  const isLargeBatch = valid.length >= 10 || totalSize >= 10 * GB;
+  if (isLargeBatch && !(await offerRestorePoint("lote grande de quarentena"))) return;
+  const scanSnapshot = state.scanResult ? structuredClone(state.scanResult) : null;
   let movedCount = 0;
+  const movedRecords = [];
   for (const item of valid) {
     try {
-      await api.moveToQuarantine({ ...item, scanId: state.scanResult?.id || "" });
+      const record = await api.moveToQuarantine({ ...item, scanId: state.scanResult?.id || "" });
+      movedRecords.push(record);
       movedCount += 1;
       state.selectedIds.delete(item.id);
       removeItemFromCurrentResult(item);
@@ -3329,7 +3331,50 @@ async function quarantineItems(items) {
     }
   }
   await refreshData();
-  setToast("Item(ns) movido(s) para quarentena.");
+  state.quarantineUndo = {
+    records: movedRecords,
+    scanSnapshot,
+    scanId: scanSnapshot?.id || ""
+  };
+  setToast({
+    message: `${movedCount} item(ns) movido(s) para a quarentena.`,
+    action: "undo-quarantine",
+    actionLabel: "Desfazer",
+    duration: 9000
+  });
+}
+
+async function undoLastQuarantine() {
+  const undo = state.quarantineUndo;
+  if (!undo?.records?.length) {
+    setToast("O tempo para desfazer terminou. O item continua disponível na Quarentena.");
+    return;
+  }
+  state.quarantineUndo = null;
+  state.toast = "";
+  render();
+  let restoredCount = 0;
+  let lastError = null;
+  for (const record of [...undo.records].reverse()) {
+    try {
+      await api.restoreQuarantine(record.id);
+      restoredCount += 1;
+    } catch (error) {
+      lastError = error;
+      break;
+    }
+  }
+  await refreshData();
+  if (restoredCount === undo.records.length && undo.scanSnapshot && state.scanResult?.id === undo.scanId) {
+    state.scanResult = undo.scanSnapshot;
+    localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+    await refreshScanComparison();
+  }
+  if (lastError) {
+    setToast(`${restoredCount} item(ns) restaurado(s). Não foi possível desfazer o restante: ${cleanIpcError(lastError)}`);
+    return;
+  }
+  setToast(`${restoredCount} item(ns) restaurado(s).`);
 }
 
 async function offerRestorePoint(contextLabel) {
@@ -3462,6 +3507,16 @@ document.addEventListener("click", async (event) => {
   if (!target) return;
   const action = target.dataset.action;
   const id = target.dataset.id;
+  if (action === "undo-quarantine") {
+    await undoLastQuarantine();
+    return;
+  }
+  if (action === "dismiss-toast") {
+    state.toast = "";
+    state.quarantineUndo = null;
+    render();
+    return;
+  }
 
   if (action === "modal-cancel") {
     const modal = state.modal;
@@ -3616,6 +3671,10 @@ document.addEventListener("click", async (event) => {
   if (action === "select-overview-candidate") {
     state.selectedItem = findCandidate(id);
     state.tab = "candidates";
+    render();
+  }
+  if (action === "settings-section") {
+    state.settingsSection = target.dataset.section || "appearance";
     render();
   }
   if (action === "overview-safe-plan") {
