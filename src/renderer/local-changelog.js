@@ -4,19 +4,16 @@ window.diskSnoopLocalChangelog = {
       title: "DiskSnoop 1.4.0",
       sections: [
         {
-          title: "Nova base visual",
+          title: "Novo visual",
           items: [
-            "A interface agora usa Inter localmente, uma escala consistente de tipografia e espaçamento e uma hierarquia visual mais limpa.",
-            "Selos coloridos foram simplificados para um ponto de estado e texto neutro, reservando cor para informações que realmente exigem atenção.",
-            "A Visão Geral passa a destacar um único número principal: o espaço do plano seguro."
-          ]
-        },
-        {
-          title: "Visão Geral mais direta",
-          items: [
-            "Plano seguro e simulação de limpeza ganharam destaque sem mover ou excluir arquivos.",
-            "Métricas secundárias, comparação com o scan anterior e próximos passos agora seguem uma leitura mais simples.",
-            "Este é o primeiro protótipo do novo sistema visual; as demais telas serão atualizadas depois da validação da Visão Geral."
+            "Interface redesenhada com um novo sistema visual: tipografia e espaçamento padronizados, usando a fonte Inter.",
+            "Overview: o espaço do plano seguro agora é o destaque principal, com a simulação de limpeza acessível diretamente por ali.",
+            "Overview: comparação com o scan anterior virou texto simples, mais fácil de ler rapidamente.",
+            "Badges em geral foram simplificados: ponto colorido + texto, em vez de pill colorido cheio.",
+            "Sidebar: navegação mais leve, estado ativo único e rodapé reduzido a uma linha.",
+            "Candidatos: cada linha agora mostra um único status principal; segurança e confiança completas continuam disponíveis nos detalhes.",
+            "Quarentena: mover itens virou uma ação leve com Desfazer por alguns segundos, enquanto exclusões permanentes mantêm a confirmação reforçada.",
+            "Configurações: preferências reorganizadas em categorias laterais, mostrando somente o grupo selecionado."
           ]
         }
       ]
@@ -25,19 +22,16 @@ window.diskSnoopLocalChangelog = {
       title: "DiskSnoop 1.4.0",
       sections: [
         {
-          title: "New visual foundation",
+          title: "New look",
           items: [
-            "The interface now uses a locally bundled Inter font, a consistent type and spacing scale, and a cleaner visual hierarchy.",
-            "Colored badges were simplified to a status dot and neutral text, reserving color for information that actually needs attention.",
-            "Overview now emphasizes one primary number: the space included in the safe plan."
-          ]
-        },
-        {
-          title: "A more direct Overview",
-          items: [
-            "The safe plan and cleanup simulation are now prominent without moving or deleting files.",
-            "Secondary metrics, previous-scan comparison, and next steps now follow a simpler reading order.",
-            "This is the first prototype of the new visual system; the remaining screens will follow after Overview validation."
+            "Redesigned interface with a new visual system: standardized typography and spacing, using the Inter typeface.",
+            "Overview: safe plan space is now the main highlight, with the cleanup simulation accessible right there.",
+            "Overview: comparison with the previous scan is now plain text, easier to scan at a glance.",
+            "Badges in general were simplified: a colored dot plus text, instead of a filled colored pill.",
+            "Sidebar: lighter navigation, a single active state, and a one-line footer.",
+            "Candidates: each row now shows one primary status; complete safety and confidence details remain available on selection.",
+            "Quarantine: moving items is now a lightweight action with Undo for a few seconds, while permanent deletion keeps its reinforced confirmation.",
+            "Settings: preferences are reorganized into side categories that show only the selected group."
           ]
         }
       ]
