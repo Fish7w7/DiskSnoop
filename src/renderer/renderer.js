@@ -12,7 +12,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.4.0";
+let APP_VERSION_LABEL = "1.5.0";
 
 const state = {
   screen: "welcome",

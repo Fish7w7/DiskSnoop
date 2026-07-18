@@ -1,4 +1,28 @@
 window.diskSnoopLocalChangelog = {
+  "1.5.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.5.0",
+      sections: [
+        {
+          title: "Manutenção",
+          items: [
+            "Atualização de manutenção: Electron, electron-builder e electron-updater foram atualizados, corrigindo vulnerabilidades apontadas na auditoria de dependências. Nenhuma mudança visual ou de comportamento nesta versão."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.5.0",
+      sections: [
+        {
+          title: "Maintenance",
+          items: [
+            "Maintenance update: Electron, electron-builder, and electron-updater were updated, addressing vulnerabilities reported by the dependency audit. This version includes no visual or behavioral changes."
+          ]
+        }
+      ]
+    }
+  },
   "1.4.0": {
     "pt-BR": {
       title: "DiskSnoop 1.4.0",

@@ -129,7 +129,7 @@ const i18n = global.window.diskSnoopI18n;
     ["Personalize como o DiskSnoop aparece e se comunica.", "Customize how DiskSnoop looks and communicates."],
     ["Atualização", "Update"],
     ["Versão instalada:", "Installed version:"],
-    ["Versão instalada: v1.4.0", "Installed version: v1.4.0"],
+    ["Versão instalada: v1.5.0", "Installed version: v1.5.0"],
     ["Abrir Atualização", "Open Update"],
     ["itens em quarentena", "items in quarantine"],
     ["scan no histórico", "scan in history"],

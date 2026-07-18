@@ -15,6 +15,8 @@
 
 > ⚠️ O app não tem assinatura de código. O Windows pode exibir aviso de app desconhecido — isso é esperado.
 
+> Requer Windows 10 ou superior, em sistema 64 bits.
+
 ---
 
 <!-- Adicione um screenshot ou GIF do app aqui. Exemplo:

@@ -1,7 +1,7 @@
 {
   "languageName": "English",
   "appName": "DiskSnoop",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "messages": {
     "boot.loadingApp": "Preparing DiskSnoop...",
     "boot.openingApp": "Opening app...",
