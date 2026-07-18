@@ -12,7 +12,7 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.3.1";
+let APP_VERSION_LABEL = "1.4.0";
 
 const state = {
   screen: "welcome",
@@ -1124,39 +1124,21 @@ function scanComparisonPanel() {
   const comparison = state.scanComparison;
   if (!comparison) {
     return `
-      <h2>Comparação com scan anterior</h2>
-      <section class="panel comparison-panel comparison-empty">
+      <section class="overview-comparison comparison-empty">
         <span class="mini-icon">${icon("clock")}</span>
         <div>
           <strong>Sem base anterior para este disco</strong>
-          <p>Depois do próximo scan, o DiskSnoop mostra o que cresceu, reduziu e mudou de prioridade.</p>
+          <p>O próximo scan mostrará, aqui, quanto o espaço revisável aumentou ou diminuiu.</p>
         </div>
       </section>
     `;
   }
-  const rows = comparison.categoryRows.length ? comparison.categoryRows : [{ name: "Sem variação relevante", delta: 0 }];
   return `
-    <h2>Comparação com scan anterior</h2>
-    <section class="panel comparison-panel">
-      <div class="comparison-head">
-        <div>
-          <strong>Desde ${escapeHtml(relativeDate(comparison.previousDate))}</strong>
-          <p>Variações ajudam a separar crescimento real de achados antigos que já estavam no disco.</p>
-        </div>
-        <span>${signedCount(comparison.candidateDelta)} candidato(s)</span>
-      </div>
-      <div class="comparison-metrics">
-        <div><span>Revisável</span>${deltaBadge(comparison.reviewableDelta)}</div>
-        <div><span>Ganho seguro</span>${deltaBadge(comparison.safeDelta)}</div>
-        <div><span>Duplicados</span>${deltaBadge(comparison.duplicateDelta)}</div>
-      </div>
-      <div class="comparison-categories">
-        ${rows.map((row) => `
-          <div class="comparison-row">
-            <span>${escapeHtml(row.name)}</span>
-            ${deltaBadge(row.delta)}
-          </div>
-        `).join("")}
+    <section class="overview-comparison">
+      <span class="mini-icon">${icon("clock")}</span>
+      <div>
+        <strong>Desde ${escapeHtml(relativeDate(comparison.previousDate))}</strong>
+        <p>${signedBytes(comparison.reviewableDelta)} revisáveis · ${signedBytes(comparison.safeDelta)} no plano seguro · ${signedCount(comparison.candidateDelta)} candidatos</p>
       </div>
     </section>
   `;
@@ -1180,67 +1162,71 @@ function overviewTab() {
 
   return `
     <section class="overview">
-      <div class="page-heading split-heading">
+      <div class="page-heading split-heading overview-heading">
         <div>
           <h1>${escapeHtml(normalizeMediaType(drive.type))} ${escapeHtml(drive.letter)}</h1>
           <p>${compactBytes(drive.used)} usados de ${compactBytes(drive.total)}</p>
         </div>
-        <span>${isHistoricalReport ? escapeHtml(t("overview.historical")) : escapeHtml(t("overview.latest"))}: ${relativeDate(result.finishedAt)}</span>
+        <span class="overview-recency">${isHistoricalReport ? escapeHtml(t("overview.historical")) : escapeHtml(t("overview.latest"))}: ${relativeDate(result.finishedAt)}</span>
       </div>
       ${isHistoricalReport ? historicalReportNote() : ""}
 
-      <section class="metric-cards">
-        <article class="metric-card">
-          <span class="metric-icon">${icon("disk")}</span>
-          <div><strong>${compactBytes(reviewable)}</strong><span>${escapeHtml(t("overview.reviewable"))}</span></div>
-        </article>
-        <article class="metric-card">
-          <span class="metric-icon">${icon("shield")}</span>
-          <div><strong>${compactBytes(safeRecoverable)}</strong><span>Ganho seguro</span></div>
-        </article>
-        <article class="metric-card">
-          <span class="metric-icon">${icon("file")}</span>
-          <div><strong>${formatCount(visibleCandidates().length)}</strong><span>${escapeHtml(t("overview.found"))}</span></div>
-        </article>
-        <article class="metric-card">
-          <span class="metric-icon">${icon("cube")}</span>
-          <div><strong>${formatCount(leftoversCount)} apps?</strong><span>${escapeHtml(t("overview.leftovers"))}</span></div>
-        </article>
+      <section class="overview-hero">
+        <div class="overview-hero-main">
+          <span class="overview-eyebrow"><span></span>Plano seguro disponível</span>
+          <strong class="overview-hero-value">${compactBytes(safeRecoverable)}</strong>
+          <p>${safeCandidates} item(ns) de baixo risco podem ser revisados sem alterar nada agora.</p>
+          <div class="overview-hero-actions">
+            <button class="primary" data-action="overview-safe-plan" ${safeCandidates ? "" : "disabled"}>${icon("shield")}Simular plano seguro</button>
+            <button class="secondary" data-action="tab" data-tab="candidates">Ver todos os candidatos</button>
+          </div>
+        </div>
+        <div class="overview-secondary-metrics">
+          <div><span>${escapeHtml(t("overview.reviewable"))}</span><strong>${compactBytes(reviewable)}</strong></div>
+          <div><span>${escapeHtml(t("overview.found"))}</span><strong>${formatCount(visibleCandidates().length)}</strong></div>
+          <div><span>${escapeHtml(t("overview.leftovers"))}</span><strong>${formatCount(leftoversCount)}</strong></div>
+        </div>
       </section>
-
-      ${reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReviewable, leftoversCount })}
 
       ${scanComparisonPanel()}
 
-      <h2>${escapeHtml(t("overview.scanReport"))}</h2>
-      <section class="panel scan-report">
-        <div class="report-grid">
-          <div><span>${escapeHtml(t("overview.finished"))}</span><strong>${fullDate(result.finishedAt)}</strong></div>
-          <div><span>${escapeHtml(t("overview.duration"))}</span><strong>${durationLabel(durationMs)}</strong></div>
-          <div><span>${escapeHtml(t("overview.files"))}</span><strong>${formatCount(result.files)}</strong></div>
-          <div><span>${escapeHtml(t("overview.folders"))}</span><strong>${formatCount(result.directories)}</strong></div>
-          <div><span>${escapeHtml(t("overview.skipped"))}</span><strong>${formatCount(result.skipped)}</strong></div>
-          <div><span>${escapeHtml(t("overview.roots"))}</span><strong>${formatCount(scannedRoots)}</strong></div>
-        </div>
-        <div class="report-note">
-          ${icon("shield")}
-          <span>${escapeHtml(t("overview.noAutoDelete"))} ${escapeHtml(duplicateReviewable ? t("overview.duplicatesNeedManual", { size: compactBytes(duplicateReviewable) }) : t("overview.reviewBeforeDelete"))}</span>
-        </div>
-      </section>
+      ${reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReviewable, leftoversCount })}
 
-      <h2>${escapeHtml(t("overview.categoryUsage"))}</h2>
-      <section class="panel category-panel">
-        ${(top.length ? top : [[t("overview.noCandidates"), 0]]).map(([name, size]) => `
-          <div class="category-row">
-            <span>${escapeHtml(cleanCategory(name))}</span>
-            <div class="category-bar">${progressBar(largest ? (size / largest) * 80 : 0)}</div>
-            <strong>${compactBytes(size)}</strong>
+      <div class="overview-detail-grid">
+        <section class="overview-section">
+          <h2>${escapeHtml(t("overview.categoryUsage"))}</h2>
+          <div class="category-panel">
+            ${(top.length ? top : [[t("overview.noCandidates"), 0]]).map(([name, size]) => `
+              <div class="category-row">
+                <span>${escapeHtml(cleanCategory(name))}</span>
+                <div class="category-bar">${progressBar(largest ? (size / largest) * 80 : 0)}</div>
+                <strong>${compactBytes(size)}</strong>
+              </div>
+            `).join("")}
           </div>
-        `).join("")}
-      </section>
+        </section>
+
+        <section class="overview-section">
+          <h2>${escapeHtml(t("overview.scanReport"))}</h2>
+          <div class="scan-report">
+            <div class="report-grid">
+              <div><span>${escapeHtml(t("overview.finished"))}</span><strong>${fullDate(result.finishedAt)}</strong></div>
+              <div><span>${escapeHtml(t("overview.duration"))}</span><strong>${durationLabel(durationMs)}</strong></div>
+              <div><span>${escapeHtml(t("overview.files"))}</span><strong>${formatCount(result.files)}</strong></div>
+              <div><span>${escapeHtml(t("overview.folders"))}</span><strong>${formatCount(result.directories)}</strong></div>
+              <div><span>${escapeHtml(t("overview.skipped"))}</span><strong>${formatCount(result.skipped)}</strong></div>
+              <div><span>${escapeHtml(t("overview.roots"))}</span><strong>${formatCount(scannedRoots)}</strong></div>
+            </div>
+            <div class="report-note">
+              ${icon("shield")}
+              <span>${escapeHtml(t("overview.noAutoDelete"))} ${escapeHtml(duplicateReviewable ? t("overview.duplicatesNeedManual", { size: compactBytes(duplicateReviewable) }) : t("overview.reviewBeforeDelete"))}</span>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <h2>Achados importantes</h2>
-      <section class="panel finding-list">
+      <section class="finding-list overview-finding-list">
         ${visibleCandidates().slice(0, 4).map((item) => `
           <button class="finding-row" data-action="select-overview-candidate" data-id="${escapeHtml(item.id)}">
             <span class="mini-icon">${icon(iconForCandidate(item))}</span>
@@ -1311,17 +1297,21 @@ function reviewAssistantPanel({ safeCandidates, safeRecoverable, duplicateReview
     }
   ];
   return `
-    <h2>Assistente de revisão</h2>
+    <div class="overview-section-heading">
+      <div>
+        <h2>Próximos passos</h2>
+        <p>Uma ordem simples para revisar o que mais importa.</p>
+      </div>
+    </div>
     <section class="review-steps">
-      ${steps.map((step, index) => `
+      ${steps.map((step) => `
         <button class="review-step" data-action="tab" data-tab="${step.tab}">
-          <span class="review-step-index">${index + 1}</span>
           <span class="mini-icon">${icon(step.iconName)}</span>
           <span>
             <strong>${escapeHtml(step.title)}</strong>
             <small>${escapeHtml(step.text)}</small>
           </span>
-          ${badge(step.status, step.status === "Pronto" || step.status === "Limpo" ? "low" : "medium")}
+          <span class="review-step-status">${escapeHtml(step.status)} ${icon("chevron")}</span>
         </button>
       `).join("")}
     </section>
@@ -3627,6 +3617,14 @@ document.addEventListener("click", async (event) => {
     state.selectedItem = findCandidate(id);
     state.tab = "candidates";
     render();
+  }
+  if (action === "overview-safe-plan") {
+    const safePlan = visibleCandidates().filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");
+    state.selectedIds.clear();
+    safePlan.forEach((item) => state.selectedIds.add(item.id));
+    state.tab = "candidates";
+    render();
+    setToast(`${safePlan.length} item(ns) adicionados à simulação. Nenhum arquivo foi alterado.`);
   }
   if (action === "select-folder") {
     state.selectedItem = findFolder(id);

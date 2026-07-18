@@ -58,9 +58,15 @@
       "Relatório do scan": "Scan report",
       "Uso por categoria": "Usage by category",
       "Ganho seguro": "Safe gain",
+      "Plano seguro disponível": "Safe plan available",
+      "Simular plano seguro": "Simulate safe plan",
+      "Ver todos os candidatos": "View all candidates",
+      "Próximos passos": "Next steps",
+      "Uma ordem simples para revisar o que mais importa.": "A simple order for reviewing what matters most.",
       "Assistente de revisão": "Review assistant",
       "Comparação com scan anterior": "Compare with previous scan",
       "Sem base anterior para este disco": "No previous baseline for this drive",
+      "O próximo scan mostrará, aqui, quanto o espaço revisável aumentou ou diminuiu.": "The next scan will show how much reviewable space increased or decreased.",
       "Depois do próximo scan, o DiskSnoop mostra o que cresceu, reduziu e mudou de prioridade.": "After the next scan, DiskSnoop shows what grew, shrank, and changed priority.",
       "Sem variação relevante": "No relevant change",
       "Variações ajudam a separar crescimento real de achados antigos que já estavam no disco.": "Changes help separate real growth from older findings that were already on disk.",
@@ -787,6 +793,18 @@
       [
         "^(\\d+) item\\(ns\\) de baixo risco somam (.+)\\.$",
         "$1 low-risk item(s) add up to $2."
+      ],
+      [
+        "^(\\d+) item\\(ns\\) de baixo risco podem ser revisados sem alterar nada agora\\.$",
+        "$1 low-risk item(s) can be reviewed without changing anything yet."
+      ],
+      [
+        "^(.+) revisáveis · (.+) no plano seguro · ([+-]?\\d+) candidatos$",
+        "$1 reviewable · $2 in the safe plan · $3 candidates"
+      ],
+      [
+        "^(\\d+) item\\(ns\\) adicionados à simulação\\. Nenhum arquivo foi alterado\\.$",
+        "$1 item(s) added to the simulation. No files were changed."
       ],
       [
         "^(\\d+) item\\(ns\\) na simulacao atual\\.$",
