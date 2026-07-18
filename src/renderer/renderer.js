@@ -2748,6 +2748,10 @@ function settingsTab() {
   const includedCount = state.settings.includedPaths?.length || 0;
   const activeQuarantine = state.quarantine.filter((item) => item.status === "Em quarentena");
   const hasCachedScan = hasValidCachedScan();
+  const historyCount = state.history.length;
+  const loadedScanCount = state.scanResult ? 1 : 0;
+  const historyCountLabel = historyCount === 1 ? "scan no histórico" : "scans no histórico";
+  const loadedScanCountLabel = loadedScanCount === 1 ? "scan carregado nesta sessão" : "scans carregados nesta sessão";
   const defaultQuarantine = state.appPaths?.defaultQuarantine || "Pasta de dados do DiskSnoop";
   const quarantineLocation = state.settings.quarantinePath || defaultQuarantine;
   const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
@@ -2823,7 +2827,7 @@ function settingsTab() {
     maintenance: `
       <div class="settings-detail-heading"><span>${icon("database")}</span><div><h2>Manutenção</h2><p>Gerencie apenas os dados locais criados pelo DiskSnoop.</p></div></div>
       <section class="settings-card vertical">
-        <div class="settings-stats"><span><strong>${state.history.length}</strong> scans no histórico</span><span><strong>${state.scanResult ? "1" : "0"}</strong> scan carregado nesta sessão</span><span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span></div>
+        <div class="settings-stats"><span><strong>${historyCount}</strong> ${historyCountLabel}</span><span><strong>${loadedScanCount}</strong> ${loadedScanCountLabel}</span><span><strong>${hasCachedScan ? "sim" : "não"}</strong> relatório salvo para abertura rápida</span></div>
         <p>Dados do app: ${escapeHtml(dataLocation)}</p>
         <p>Log de auditoria: ${escapeHtml(state.appPaths?.auditLog || `${dataLocation}\\audit-log.jsonl`)}</p>
         <div class="detail-actions"><button class="secondary" data-action="open-data-folder">${icon("external")}Abrir dados do app</button><button class="secondary" data-action="clear-local-scan" ${hasCachedScan ? "" : "disabled"}>${icon("trash")}Limpar último scan local</button><button class="secondary" data-action="clear-history">${icon("trash")}Limpar histórico</button><button class="outline-danger" data-action="reset-settings">${icon("reset")}Restaurar configurações</button></div>

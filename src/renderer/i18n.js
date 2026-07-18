@@ -322,6 +322,10 @@
       "As cópias lidas têm o mesmo conteúdo SHA-256. Ainda assim, escolha manualmente qual caminho manter antes de agir fora desta tela.": "The readable copies have the same SHA-256 content. Still, manually choose which path to keep before acting outside this screen.",
       "Possível duplicado": "Possible duplicate",
       "Este grupo foi montado por nome e tamanho. Abra os caminhos antes de decidir, porque arquivos diferentes podem parecer iguais por fora.": "This group was built by name and size. Open the paths before deciding, because different files can look identical from the outside.",
+      "grupos": "groups",
+      "cópias": "copies",
+      "estimado": "estimated",
+      "Todas": "All",
       "Aparência": "Appearance",
       "Aparência e idioma": "Appearance and language",
       "Personalize como o DiskSnoop aparece e se comunica.": "Customize how DiskSnoop looks and communicates.",
@@ -353,6 +357,7 @@
       "Detectar logs grandes e temporários": "Detect large logs and temporary files",
       "Confirmar duplicados com hash SHA-256": "Confirm duplicates with SHA-256 hash",
       "Itens sensíveis como Windows, System32, drivers e programas ativos continuam fora dos candidatos normais.": "Sensitive items such as Windows, System32, drivers, and active programs remain outside normal candidates.",
+      "itens em quarentena": "items in quarantine",
       "Local atual:": "Current location:",
       "Alterar pasta": "Change folder",
       "Abrir quarentena": "Open quarantine",
@@ -364,10 +369,16 @@
       "Pastas ignoradas:": "Ignored folders:",
       "Itens ignorados não entram nos próximos scans nem nas sugestões.": "Ignored items do not appear in future scans or suggestions.",
       "Dados do app:": "App data:",
+      "scan no histórico": "scan in history",
+      "scans no histórico": "scans in history",
+      "scan carregado nesta sessão": "scan loaded in this session",
+      "scans carregados nesta sessão": "scans loaded in this session",
+      "relatório salvo para abertura rápida": "saved report for quick opening",
       "Abrir dados do app": "Open app data",
       "Essas ações limpam apenas dados do DiskSnoop. Elas não apagam arquivos analisados nem itens fora da quarentena.": "These actions only clean DiskSnoop data. They do not delete scanned files or items outside quarantine.",
       "Nenhuma pasta incluída.": "No included folder.",
       "Nenhuma pasta ignorada.": "No ignored folder.",
+      "A quarentena está em outro disco. Arquivos podem ser copiados com verificação antes da remoção; pastas entre volumes podem ser bloqueadas por segurança. Para pastas grandes, escolha uma quarentena no mesmo disco.": "Quarantine is on another drive. Files can be copied with verification before removal; folders across drives may be blocked for safety. For large folders, choose quarantine on the same drive.",
       "Não foi possível iniciar": "Could not start",
       "Revisão manual necessária": "Manual review required",
       "Alguns itens exigem revisão manual": "Some items require manual review",
@@ -576,6 +587,10 @@
       [
         "^Última variação livre registrada: (.+)$",
         "Last recorded free-space change: $1"
+      ],
+      [
+        "^Disco (.+)$",
+        "Drive $1"
       ],
       [
         "^(.+) usados de (.+)$",
