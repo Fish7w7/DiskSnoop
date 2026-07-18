@@ -127,6 +127,8 @@ const i18n = global.window.diskSnoopI18n;
     ["Aparência e idioma", "Appearance and language"],
     ["Análise", "Analysis"],
     ["Personalize como o DiskSnoop aparece e se comunica.", "Customize how DiskSnoop looks and communicates."],
+    ["Atualização", "Update"],
+    ["Versão instalada:", "Installed version:"],
     ["Versão instalada: v1.4.0", "Installed version: v1.4.0"],
     ["Abrir Atualização", "Open Update"],
     ["Plano seguro disponível", "Safe plan available"],

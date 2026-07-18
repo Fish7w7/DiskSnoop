@@ -331,6 +331,8 @@
       "Controle o que entra e o que fica fora das análises.": "Control what is included in and excluded from scans.",
       "Gerencie apenas os dados locais criados pelo DiskSnoop.": "Manage only the local data created by DiskSnoop.",
       "Consulte a versão instalada e procure novas versões.": "Check the installed version and look for new releases.",
+      "Atualização": "Update",
+      "Versão instalada:": "Installed version:",
       "As opções de canal, verificação automática e instalação continuam na tela dedicada de Atualização.": "Channel, automatic checks, and installation options remain on the dedicated Update screen.",
       "Abrir Atualização": "Open Update",
       "Idioma": "Language",
