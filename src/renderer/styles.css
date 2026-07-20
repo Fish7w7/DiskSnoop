@@ -3267,6 +3267,7 @@ input[type="checkbox"] {
 
 .scan-card {
   width: min(860px, 100%);
+  min-width: 0;
   padding: 34px;
 }
 
@@ -4634,5 +4635,112 @@ input[type="checkbox"] {
   .settings-categories {
     position: static;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Master-detail 1.7: bottom dock in windowed mode, side dock on wide screens. */
+.master-detail-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.master-detail-list {
+  min-width: 0;
+}
+
+.master-detail-layout:has(.detail-dock[data-has-selection="true"]) .master-detail-list {
+  padding-bottom: calc(45vh + var(--space-4));
+}
+
+.detail-dock {
+  position: fixed;
+  right: clamp(24px, 3vw, 40px);
+  bottom: 0;
+  left: calc(var(--sidebar-width) + clamp(24px, 3vw, 40px));
+  z-index: 5;
+  max-height: 45vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  margin-top: -1px;
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+}
+
+.detail-dock[data-has-selection="false"] {
+  display: none;
+}
+
+.detail-dock-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-lg);
+  letter-spacing: -0.025em;
+}
+
+.detail-dock > .candidate-detail-panel,
+.detail-dock > .explanation {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+@media (min-width: 1300px) {
+  .master-detail-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    gap: var(--space-6);
+  }
+
+  .master-detail-list .table-panel {
+    max-height: calc(100vh - 140px);
+  }
+
+  .master-detail-layout:has(.detail-dock[data-has-selection="true"]) .master-detail-list {
+    padding-bottom: 0;
+  }
+
+  .detail-dock {
+    position: sticky;
+    top: var(--space-4);
+    right: auto;
+    bottom: auto;
+    left: auto;
+    max-height: calc(100vh - var(--header-height) - 32px);
+    margin-top: 0;
+    border: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  .detail-dock[data-has-selection="false"] {
+    display: block;
+  }
+
+  .detail-dock .candidate-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .detail-dock .candidate-detail-meta {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+    padding-top: var(--space-3);
+    padding-left: 0;
+  }
+
+  .detail-dock .detail-actions {
+    gap: var(--space-2);
+  }
+
+  .detail-dock .detail-actions button {
+    flex: 1 1 140px;
+    min-width: 0;
   }
 }

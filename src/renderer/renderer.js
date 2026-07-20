@@ -13,7 +13,7 @@ const MB = 1024 * 1024;
 const SIGNABLE_EXTENSIONS = new Set([".exe", ".dll", ".msi", ".sys", ".cab", ".ocx"]);
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.6.0";
+let APP_VERSION_LABEL = "1.7.0";
 
 const state = {
   screen: "welcome",
@@ -468,7 +468,8 @@ function normalizeMediaType(type) {
 }
 
 function applyTheme() {
-  const theme = state.settings?.theme === "dark" ? "dark" : "light";
+  const preference = themeLabels[state.settings?.theme] ? state.settings.theme : "light";
+  const theme = preference === "system" ? "system" : preference;
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("disksnoop-theme", theme); } catch {}
   rememberLanguage();
@@ -1938,35 +1939,41 @@ function candidatesTab() {
         <span>${selectedItems.length} selecionado(s)</span>
         <strong>${compactBytes(selectedSize)}</strong>
       </div>
-      <section class="panel table-panel candidates-panel">
-        <table class="candidates-table">
-          <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Status</th></tr></thead>
-          <tbody>
-            ${visibleItems.map((item) => {
-              const canSelect = canMoveToQuarantine(item);
-              return `
-              <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-candidate" data-id="${escapeHtml(item.id)}">
-                <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) && canSelect ? "checked" : ""} ${canSelect ? "" : "disabled"}></td>
-                <td class="candidate-item-cell">
-                  <div class="candidate-main">
-                    <span class="candidate-icon">${icon(item.type === "Instaladores antigos" ? "download" : item.type === "Arquivos grandes" ? "file" : "folder")}</span>
-                    <span class="candidate-copy">
-                      <strong>${escapeHtml(item.name)}</strong>
-                      <small>${escapeHtml(item.path)}</small>
-                    </span>
-                  </div>
-                </td>
-                <td>${escapeHtml(cleanCandidateType(item.type))}</td>
-                <td>${compactBytes(item.size)}</td>
-                <td>${candidatePrimaryStatus(item)}</td>
-              </tr>
-            `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="master-detail-layout">
+        <div class="master-detail-list">
+          <section class="panel table-panel candidates-panel">
+            <table class="candidates-table">
+              <thead><tr><th class="check-col"><input type="checkbox" data-action="toggle-all-candidates" ${selectableVisibleItems.length && selectableVisibleItems.every((item) => state.selectedIds.has(item.id)) ? "checked" : ""} ${selectableVisibleItems.length ? "" : "disabled"}></th><th>Item</th><th>Tipo</th><th>Tamanho</th><th>Status</th></tr></thead>
+              <tbody>
+                ${visibleItems.map((item) => {
+                  const canSelect = canMoveToQuarantine(item);
+                  return `
+                  <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-candidate" data-id="${escapeHtml(item.id)}">
+                    <td><input type="checkbox" data-action="toggle-select" data-id="${escapeHtml(item.id)}" ${state.selectedIds.has(item.id) && canSelect ? "checked" : ""} ${canSelect ? "" : "disabled"}></td>
+                    <td class="candidate-item-cell">
+                      <div class="candidate-main">
+                        <span class="candidate-icon">${icon(item.type === "Instaladores antigos" ? "download" : item.type === "Arquivos grandes" ? "file" : "folder")}</span>
+                        <span class="candidate-copy">
+                          <strong>${escapeHtml(item.name)}</strong>
+                          <small>${escapeHtml(item.path)}</small>
+                        </span>
+                      </div>
+                    </td>
+                    <td>${escapeHtml(cleanCandidateType(item.type))}</td>
+                    <td>${compactBytes(item.size)}</td>
+                    <td>${candidatePrimaryStatus(item)}</td>
+                  </tr>
+                `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
+              </tbody>
+            </table>
+          </section>
+          ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-candidates">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
+        </div>
+        <aside class="detail-dock" data-has-selection="${state.selectedItem ? "true" : "false"}">
+          <h2 class="detail-dock-title">Por que apareceu aqui?</h2>
+          ${candidateDetails(state.selectedItem)}
+        </aside>
       </section>
-      ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-candidates">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
-      <h2>Por que apareceu aqui?</h2>
-      ${candidateDetails(state.selectedItem)}
     </section>
   `;
 }
@@ -2154,24 +2161,30 @@ function duplicatesTab() {
           ${icon("chevron")}
         </div>
       </div>
-      <section class="panel table-panel">
-        <table class="duplicates-table">
-          <thead><tr><th>Arquivo</th><th>Cópias</th><th>Tamanho</th><th>Revisável</th><th>Confiança</th></tr></thead>
-          <tbody>
-            ${groups.map((group) => `
-              <tr class="${selected?.id === group.id ? "selected" : ""}" data-action="select-duplicate" data-id="${escapeHtml(group.id)}">
-                <td class="name-cell"><span class="folder-icon">${icon("copy")}</span><span>${escapeHtml(group.name)}</span></td>
-                <td>${Number(group.copies || group.items?.length || 0).toLocaleString("pt-BR")}</td>
-                <td>${compactBytes(group.size)}</td>
-                <td>${compactBytes(group.reviewableBytes)}</td>
-                <td>${badge(group.confidence || "Possível", duplicateConfidenceKind(group.confidence))}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum possível duplicado neste scan.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="master-detail-layout">
+        <div class="master-detail-list">
+          <section class="panel table-panel">
+            <table class="duplicates-table">
+              <thead><tr><th>Arquivo</th><th>Cópias</th><th>Tamanho</th><th>Revisável</th><th>Confiança</th></tr></thead>
+              <tbody>
+                ${groups.map((group) => `
+                  <tr class="${selected?.id === group.id ? "selected" : ""}" data-action="select-duplicate" data-id="${escapeHtml(group.id)}">
+                    <td class="name-cell"><span class="folder-icon">${icon("copy")}</span><span>${escapeHtml(group.name)}</span></td>
+                    <td>${Number(group.copies || group.items?.length || 0).toLocaleString("pt-BR")}</td>
+                    <td>${compactBytes(group.size)}</td>
+                    <td>${compactBytes(group.reviewableBytes)}</td>
+                    <td>${badge(group.confidence || "Possível", duplicateConfidenceKind(group.confidence))}</td>
+                  </tr>
+                `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum possível duplicado neste scan.</td></tr>`}
+              </tbody>
+            </table>
+          </section>
+        </div>
+        <aside class="detail-dock" data-has-selection="${selected ? "true" : "false"}">
+          <h2 class="detail-dock-title">Revisão do grupo</h2>
+          ${duplicateDetails(selected)}
+        </aside>
       </section>
-      <h2>Revisão do grupo</h2>
-      ${duplicateDetails(selected)}
     </section>
   `;
 }
@@ -2411,27 +2424,33 @@ function leftoversTab() {
         ${selectControl("leftoversStatus", ["Todos", "Possível sobra", "App não encontrado?", "Verificar manualmente", "App instalado", "Componente do sistema", "Verificação indisponível"], state.leftoversStatus)}
         ${selectControl("leftoversLocation", ["Todos", "AppData Local", "AppData Roaming", "ProgramData", "Program Files", "Program Files (x86)"], state.leftoversLocation)}
       </div>
-      <section class="panel table-panel">
-        <table class="leftovers-table">
-          <thead><tr><th>Pasta</th><th>Local</th><th>Tamanho</th><th>Status</th></tr></thead>
-          <tbody>
-            ${visibleItems.map((item) => {
-              const [label, kind] = leftoverStatus(item);
-              return `
-                <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-leftover" data-id="${escapeHtml(item.id)}">
-                  <td class="name-cell"><span class="folder-icon">${icon("folder")}</span><span>${escapeHtml(item.name)}</span></td>
-                  <td title="${escapeHtml(item.path)}">${escapeHtml(shortPath(item.path))}</td>
-                  <td>${compactBytes(item.size)}</td>
-                  <td>${badge(label, kind)}</td>
-                </tr>
-              `;
-            }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma possível sobra de app encontrada neste scan.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="master-detail-layout">
+        <div class="master-detail-list">
+          <section class="panel table-panel">
+            <table class="leftovers-table">
+              <thead><tr><th>Pasta</th><th>Local</th><th>Tamanho</th><th>Status</th></tr></thead>
+              <tbody>
+                ${visibleItems.map((item) => {
+                  const [label, kind] = leftoverStatus(item);
+                  return `
+                    <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-leftover" data-id="${escapeHtml(item.id)}">
+                      <td class="name-cell"><span class="folder-icon">${icon("folder")}</span><span>${escapeHtml(item.name)}</span></td>
+                      <td title="${escapeHtml(item.path)}">${escapeHtml(shortPath(item.path))}</td>
+                      <td>${compactBytes(item.size)}</td>
+                      <td>${badge(label, kind)}</td>
+                    </tr>
+                  `;
+                }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma possível sobra de app encontrada neste scan.</td></tr>`}
+              </tbody>
+            </table>
+          </section>
+          ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-leftovers">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
+        </div>
+        <aside class="detail-dock" data-has-selection="${state.selectedItem ? "true" : "false"}">
+          <h2 class="detail-dock-title">Revisão segura</h2>
+          ${leftoverDetails(state.selectedItem)}
+        </aside>
       </section>
-      <h2>Revisão segura</h2>
-      ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-leftovers">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
-      ${leftoverDetails(state.selectedItem)}
     </section>
   `;
 }
