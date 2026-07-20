@@ -10,8 +10,8 @@
 
 | Tipo | Link |
 |------|------|
-| 🖥️ Instalador (recomendado) | [DiskSnoop-Setup-1.2.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.2.0/DiskSnoop-Setup-1.2.0-x64.exe) |
-| 📦 Portable | [DiskSnoop-Portable-1.2.0-x64.exe](https://github.com/Fish7w7/DiskSnoop/releases/download/v1.2.0/DiskSnoop-Portable-1.2.0-x64.exe) |
+| 🖥️ Instalador (recomendado) | [Baixar na versão mais recente](https://github.com/Fish7w7/DiskSnoop/releases/latest) |
+| 📦 Portable | [Baixar na versão mais recente](https://github.com/Fish7w7/DiskSnoop/releases/latest) |
 
 > ⚠️ O app não tem assinatura de código. O Windows pode exibir aviso de app desconhecido — isso é esperado.
 
@@ -29,6 +29,9 @@ O DiskSnoop analisa seus discos, classifica pastas e arquivos por tamanho, expli
 
 ## Recursos
 
+**✨ Interface e revisão**
+Cinco temas — Claro, Escuro, Hacker, Neon e Sistema — com inicialização já na cor correta. Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps abrem detalhes sob demanda em um painel sobreposto, deixando a lista inteira disponível quando ele está fechado.
+
 **🔍 Análise de disco**
 Scanner em processo separado com progresso, pausa e cancelamento. Ranking das maiores pastas, aba de arquivos grandes e relatório com duração, contagens e itens sem acesso.
 
@@ -39,7 +42,10 @@ Candidatos para `node_modules`, `.venv`, `dist`, `build`, `.cache`, instaladores
 Itens movidos para quarentena ficam fora do caminho original com metadados para restauração. Você decide quando excluir permanentemente — isso sempre exige confirmação explícita. Quarentena no mesmo disco é recomendada para pastas grandes (evita cópia antes da remoção).
 
 **📋 Histórico e configurações**
-Histórico de scans e ações com snapshots carregáveis. Configurações de limites, detectores, escopo, pastas ignoradas e local da quarentena.
+Histórico de scans e ações com snapshots carregáveis e gráfico de linhas para comparar espaço revisável e espaço liberado. Configurações de aparência, limites, detectores, escopo, pastas ignoradas e local da quarentena.
+
+**💬 Ajuda para decidir**
+Pastas grandes, candidatos, duplicados e sobras de apps permitem copiar uma dúvida pronta com caminho, tamanho, data, categoria, motivo e contexto de segurança. Executáveis e bibliotecas compatíveis também podem ter a assinatura Authenticode verificada sob demanda.
 
 **🔄 Atualização**
 Verificação de updates no GitHub Releases com changelog, opção de lembrar depois e ignorar versão. No instalador, o download automático vem ativo por padrão — o reinício sempre exige confirmação. O portable usa fluxo assistido.
@@ -90,6 +96,8 @@ npm test
 
 Os testes cobrem regras críticas de quarentena e a camada de tradução renderizada para evitar textos em Português quando a interface está em Inglês.
 
+Também há regressões para proteção AppX, cache do inventário, Authenticode, tema do primeiro frame, overlays responsivos, scroll e textos copiados para tirar dúvidas.
+
 ### Build para Windows
 
 ```powershell
@@ -119,11 +127,13 @@ O setup instala em `%LOCALAPPDATA%\Programs\DiskSnoop` por usuário atual, sem p
    ```
 4. Crie e envie a tag:
    ```powershell
-   git tag v1.2.0
-   git push origin v1.2.0
+   git tag v1.7.0
+   git push origin v1.7.0
    ```
 5. Anexe estes arquivos de `release/` na release do GitHub:
-   - `DiskSnoop-Setup-1.2.0-x64.exe`
-   - `DiskSnoop-Setup-1.2.0-x64.exe.blockmap`
+   - `DiskSnoop-Setup-1.7.0-x64.exe`
+   - `DiskSnoop-Setup-1.7.0-x64.exe.blockmap`
    - `latest.yml`
-   - `DiskSnoop-Portable-1.2.0-x64.exe`
+   - `DiskSnoop-Portable-1.7.0-x64.exe`
+
+> Versões intermediárias não precisam ser publicadas retroativamente. O `electron-updater` pode atualizar diretamente da 1.5.0 para a 1.7.0, desde que a release mais recente inclua `latest.yml`, o instalador e o arquivo `.blockmap` correspondentes.
