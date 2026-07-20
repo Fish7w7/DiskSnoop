@@ -7,6 +7,7 @@ const https = require("node:https");
 const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
 const { createInstalledAppsInventory } = require("./installed-apps");
+const { createAuthenticodeVerifier } = require("./authenticode");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -172,6 +173,7 @@ function runPowerShell(script, options = {}) {
 }
 
 const installedAppsInventory = createInstalledAppsInventory({ runPowerShell });
+const authenticodeVerifier = createAuthenticodeVerifier({ runPowerShell });
 
 async function getDrives() {
   if (process.platform !== "win32") {
@@ -1213,6 +1215,14 @@ ipcMain.on("path:deletionRisk", (event, targetPath) => {
 });
 
 ipcMain.handle("apps:listInstalled", async () => installedAppsInventory.load());
+
+ipcMain.handle("signature:verify", async (_event, filePath) => {
+  try {
+    return ipcOk(await authenticodeVerifier.verify(String(filePath || "")));
+  } catch (error) {
+    return ipcError(error);
+  }
+});
 
 ipcMain.handle("system:createRestorePoint", async () => {
   if (process.platform !== "win32") {
