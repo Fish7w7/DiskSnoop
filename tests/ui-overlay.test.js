@@ -66,3 +66,16 @@ test("transições de aba e tema respeitam movimento reduzido", () => {
   assert.match(css, /body,[\s\S]*?\.settings-card\s*\{\s*transition:\s*background-color 180ms ease, border-color 180ms ease, color 180ms ease;/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.settings-card\s*\{\s*transition:\s*none;[\s\S]*?\.tab-enter\s*\{\s*animation:\s*none;/);
 });
+
+test("count-up da Overview persiste valores fora do state e não reinicia no mesmo alvo", () => {
+  assert.match(renderer, /const animatedMetricValues = new Map\(\);/);
+  assert.match(renderer, /const animatedMetricTargets = new Map\(\);/);
+  assert.match(renderer, /previousTarget === target/);
+  assert.match(renderer, /window\.matchMedia\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
+  assert.match(renderer, /const duration = 600;/);
+  for (const id of ["metric-safe-space", "metric-reviewable-space", "metric-candidates", "metric-leftovers", "metric-files"]) {
+    assert.match(renderer, new RegExp(`id="${id}"`));
+    assert.match(renderer, new RegExp(`animateMetricValue\\("${id}"`));
+  }
+  assert.match(renderer, /animateOverviewMetrics\(\);[\s\S]*?const detailPanel/);
+});

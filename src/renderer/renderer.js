@@ -89,6 +89,9 @@ const state = {
 
 let lastRenderedTab = null;
 let pendingTableRefresh = 0;
+const animatedMetricValues = new Map();
+const animatedMetricTargets = new Map();
+const metricAnimationFrames = new Map();
 
 const tabs = [
   ["overview", "nav.overview", "home"],
@@ -313,6 +316,56 @@ function applyRenderedTranslations(root) {
 
 function formatCount(value) {
   return Number(value || 0).toLocaleString(currentLanguage());
+}
+
+function animateMetricValue(elementId, targetValue, formatFn) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  const target = Number(targetValue || 0);
+  const startValue = animatedMetricValues.get(elementId) ?? 0;
+  const previousTarget = animatedMetricTargets.get(elementId);
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const existingFrame = metricAnimationFrames.get(elementId);
+  if (existingFrame) cancelAnimationFrame(existingFrame);
+
+  if (prefersReducedMotion || previousTarget === target || startValue === target) {
+    element.textContent = formatFn(target);
+    animatedMetricValues.set(elementId, target);
+    animatedMetricTargets.set(elementId, target);
+    metricAnimationFrames.delete(elementId);
+    return;
+  }
+
+  animatedMetricTargets.set(elementId, target);
+  element.textContent = formatFn(startValue);
+  const duration = 600;
+  const startTime = performance.now();
+
+  function tick(now) {
+    const progress = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startValue + (target - startValue) * eased);
+    element.textContent = formatFn(current);
+    animatedMetricValues.set(elementId, current);
+    if (progress < 1) {
+      metricAnimationFrames.set(elementId, requestAnimationFrame(tick));
+    } else {
+      animatedMetricValues.set(elementId, target);
+      metricAnimationFrames.delete(elementId);
+    }
+  }
+
+  metricAnimationFrames.set(elementId, requestAnimationFrame(tick));
+}
+
+function animateOverviewMetrics() {
+  if (state.screen !== "app" || state.tab !== "overview" || !state.scanResult) return;
+  animateMetricValue("metric-safe-space", safeRecoverableTotal(), compactBytes);
+  animateMetricValue("metric-reviewable-space", totalReviewable(), compactBytes);
+  animateMetricValue("metric-candidates", visibleCandidates().length, formatCount);
+  animateMetricValue("metric-leftovers", possibleLeftoversCount(), formatCount);
+  animateMetricValue("metric-files", state.scanResult.files, formatCount);
 }
 
 function formatBytes(bytes = 0) {
@@ -1272,7 +1325,7 @@ function overviewTab() {
       <section class="overview-hero">
         <div class="overview-hero-main">
           <span class="overview-eyebrow"><span></span>Plano seguro disponível</span>
-          <strong class="overview-hero-value">${compactBytes(safeRecoverable)}</strong>
+          <strong class="overview-hero-value" id="metric-safe-space">${compactBytes(safeRecoverable)}</strong>
           <p>${safeCandidates} item(ns) de baixo risco podem ser revisados sem alterar nada agora.</p>
           <div class="overview-hero-actions">
             <button class="primary" data-action="overview-safe-plan" ${safeCandidates ? "" : "disabled"}>${icon("shield")}Simular plano seguro</button>
@@ -1280,9 +1333,9 @@ function overviewTab() {
           </div>
         </div>
         <div class="overview-secondary-metrics">
-          <div><span>${escapeHtml(t("overview.reviewable"))}</span><strong>${compactBytes(reviewable)}</strong></div>
-          <div><span>${escapeHtml(t("overview.found"))}</span><strong>${formatCount(visibleCandidates().length)}</strong></div>
-          <div><span>${escapeHtml(t("overview.leftovers"))}</span><strong>${formatCount(leftoversCount)}</strong></div>
+          <div><span>${escapeHtml(t("overview.reviewable"))}</span><strong id="metric-reviewable-space">${compactBytes(reviewable)}</strong></div>
+          <div><span>${escapeHtml(t("overview.found"))}</span><strong id="metric-candidates">${formatCount(visibleCandidates().length)}</strong></div>
+          <div><span>${escapeHtml(t("overview.leftovers"))}</span><strong id="metric-leftovers">${formatCount(leftoversCount)}</strong></div>
         </div>
       </section>
 
@@ -1310,7 +1363,7 @@ function overviewTab() {
             <div class="report-grid">
               <div><span>${escapeHtml(t("overview.finished"))}</span><strong>${fullDate(result.finishedAt)}</strong></div>
               <div><span>${escapeHtml(t("overview.duration"))}</span><strong>${durationLabel(durationMs)}</strong></div>
-              <div><span>${escapeHtml(t("overview.files"))}</span><strong>${formatCount(result.files)}</strong></div>
+              <div><span>${escapeHtml(t("overview.files"))}</span><strong id="metric-files">${formatCount(result.files)}</strong></div>
               <div><span>${escapeHtml(t("overview.folders"))}</span><strong>${formatCount(result.directories)}</strong></div>
               <div><span>${escapeHtml(t("overview.skipped"))}</span><strong>${formatCount(result.skipped)}</strong></div>
               <div><span>${escapeHtml(t("overview.roots"))}</span><strong>${formatCount(scannedRoots)}</strong></div>
@@ -3291,6 +3344,7 @@ function render() {
       nextContent.classList.add("tab-enter");
     }
   }
+  animateOverviewMetrics();
   const detailPanel = $(".detail-overlay-panel");
   if (detailPanel) detailPanel.focus({ preventScroll: true });
   lastRenderedTab = state.screen === "app" ? state.tab : null;
