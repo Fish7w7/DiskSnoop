@@ -13,7 +13,7 @@ const MB = 1024 * 1024;
 const SIGNABLE_EXTENSIONS = new Set([".exe", ".dll", ".msi", ".sys", ".cab", ".ocx"]);
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.7.0";
+let APP_VERSION_LABEL = "1.8.0-beta.1";
 
 const state = {
   screen: "welcome",

@@ -1,31 +1,31 @@
 window.diskSnoopLocalChangelog = {
-  "1.7.0": {
+  "1.8.0-beta.1": {
     "pt-BR": {
-      title: "DiskSnoop 1.7.0",
+      title: "DiskSnoop 1.8.0-beta.1",
       sections: [
         {
-          title: "Interface mais estável",
+          title: "Polimento visual em teste",
           items: [
-            "Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps agora abrem os detalhes sob demanda em um painel sobreposto e dispensável, devolvendo todo o espaço à lista quando ele está fechado.",
-            "Pastas Grandes agora também permite copiar uma dúvida pronta com caminho, tamanho, data, segurança, motivo e orientação para revisão.",
-            "Os temas Hacker, Neon e Sistema agora aparecem nas Configurações junto de Claro e Escuro, com cores e superfícies ajustadas.",
-            "A inicialização passa a exibir o primeiro quadro já com a cor do tema escolhido, eliminando flashes de cores incorretas antes da tela de carregamento.",
-            "O card de progresso do scan permanece centralizado mesmo quando o caminho exibido muda de tamanho."
+            "Estados vazios agora usam ilustrações simples que acompanham a cor de cada tema.",
+            "Tabelas exibem linhas skeleton durante refiltros, mantendo o cabeçalho e o contexto visíveis.",
+            "Aparência ganhou cards com preview das cores para escolher entre Claro, Escuro, Hacker, Neon e Sistema.",
+            "Trocas de aba e tema receberam transições sutis, desativadas quando o sistema pede movimento reduzido.",
+            "Os principais números da Visão Geral agora contam suavemente até o novo valor sem reiniciar em renderizações que não alteram a métrica."
           ]
         }
       ]
     },
     "en-US": {
-      title: "DiskSnoop 1.7.0",
+      title: "DiskSnoop 1.8.0-beta.1",
       sections: [
         {
-          title: "A more stable interface",
+          title: "Visual polish under evaluation",
           items: [
-            "Large Folders, Large Files, Candidates, Duplicates, and App Leftovers now open details on demand in a dismissible overlay, returning all available space to the list when closed.",
-            "Large Folders can now also copy a ready-to-use question with path, size, date, safety, reason, and review guidance.",
-            "Hacker, Neon, and System themes now appear in Settings alongside Light and Dark, with adjusted colors and surfaces.",
-            "Startup now displays its first frame using the selected theme color, eliminating incorrect color flashes before the loading screen.",
-            "The scan progress card remains centered even when the displayed path changes length."
+            "Empty states now use simple illustrations that follow each theme's accent color.",
+            "Tables display skeleton rows while filters refresh, keeping headers and context visible.",
+            "Appearance now offers color-preview cards for choosing Light, Dark, Hacker, Neon, or System.",
+            "Tab and theme changes received subtle transitions, disabled when the system requests reduced motion.",
+            "The main Overview numbers now count smoothly toward new values without restarting on renders that do not change the metric."
           ]
         }
       ]
