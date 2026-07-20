@@ -1,4 +1,32 @@
 window.diskSnoopLocalChangelog = {
+  "1.7.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.7.0",
+      sections: [
+        {
+          title: "Interface mais estável",
+          items: [
+            "Candidatos, Duplicados e Sobras de Apps agora mantêm os detalhes do item selecionado visíveis em um painel adaptado ao tamanho da janela.",
+            "A inicialização passa a exibir o primeiro quadro já com a cor do tema escolhido, eliminando flashes de cores incorretas antes da tela de carregamento.",
+            "O card de progresso do scan permanece centralizado mesmo quando o caminho exibido muda de tamanho."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.7.0",
+      sections: [
+        {
+          title: "A more stable interface",
+          items: [
+            "Candidates, Duplicates, and App Leftovers now keep the selected item's details visible in a panel that adapts to the window size.",
+            "Startup now displays its first frame using the selected theme color, eliminating incorrect color flashes before the loading screen.",
+            "The scan progress card remains centered even when the displayed path changes length."
+          ]
+        }
+      ]
+    }
+  },
   "1.6.0": {
     "pt-BR": {
       title: "DiskSnoop 1.6.0",
