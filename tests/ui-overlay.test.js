@@ -21,3 +21,9 @@ test("todas as cinco telas de revisão abrem o mesmo overlay", () => {
   }
   assert.doesNotMatch(renderer, /<h2>Detalhes<\/h2>/);
 });
+
+test("Pastas Grandes oferece texto de dúvida com contexto de segurança", () => {
+  assert.match(renderer, /copyDoubtButton\(item, "folder"\)/);
+  assert.match(renderer, /if \(context === "folder"\)[\s\S]*?safety:[\s\S]*?guidance:/);
+  assert.match(renderer, /if \(context === "folder"\) return findFolder\(id\) \|\| state\.selectedItem;/);
+});

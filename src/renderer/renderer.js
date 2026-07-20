@@ -1516,6 +1516,7 @@ function folderDetails(item) {
           <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
           <button class="secondary" data-action="show-selected">${icon("list")}Ver conteúdo</button>
           <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
+          ${copyDoubtButton(item, "folder")}
         </div>
       </div>
     </section>
@@ -1853,6 +1854,18 @@ function doubtItemForContext(item, context = "candidate") {
     const summary = leftoverReviewSummary(status, match);
     return { ...item, type: status, reason: item.reason || summary.text };
   }
+  if (context === "folder") {
+    const [riskLabel] = folderRisk(item);
+    const protection = protectedPathInfo(item.path);
+    const guidance = folderReviewGuidance(item);
+    return {
+      ...item,
+      type: "Pasta grande",
+      reason: item.reason || "Pasta acima do limite configurado para pastas grandes.",
+      safety: protection.protected ? `Protegido: ${protection.reason}` : riskLabel,
+      guidance: guidance.text
+    };
+  }
   return item;
 }
 
@@ -1869,6 +1882,8 @@ function buildDoubtText(item, context = "candidate") {
   lines.push(`- ${t("doubt.modified")}: ${normalized.modifiedAt ? fullDate(normalized.modifiedAt) : "-"}`);
   lines.push(`- ${t("doubt.category")}: ${localizedRenderedText(cleanCandidateType(normalized.type || "-"))}`);
   if (normalized.reason) lines.push(`- ${t("doubt.reason")}: ${localizedRenderedText(normalized.reason)}`);
+  if (normalized.safety) lines.push(`- ${t("doubt.safety")}: ${localizedRenderedText(normalized.safety)}`);
+  if (normalized.guidance) lines.push(`- ${t("doubt.guidance")}: ${localizedRenderedText(normalized.guidance)}`);
 
   const signatureEntries = paths
     .map((itemPath) => [itemPath, state.signatureCache.get(itemPath)])
@@ -1884,6 +1899,7 @@ function buildDoubtText(item, context = "candidate") {
 function doubtItemByContext(id, context) {
   if (context === "duplicate") return findDuplicateGroup(id);
   if (context === "leftover") return findFolder(id) || state.selectedItem;
+  if (context === "folder") return findFolder(id) || state.selectedItem;
   return findCandidate(id) || state.selectedItem;
 }
 

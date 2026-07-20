@@ -167,6 +167,8 @@
     "doubt.modified": "Modified",
     "doubt.category": "Category",
     "doubt.reason": "Reason it was found",
+    "doubt.safety": "Safety",
+    "doubt.guidance": "What to check",
     "doubt.signature": "Digital signature",
     "doubt.question": "Is it safe to delete this item, or should I review it manually first?",
     "candidates.copyDoubt": "Copy question",

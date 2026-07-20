@@ -223,6 +223,7 @@ const i18n = global.window.diskSnoopI18n;
     ["A quarentena está em outro disco para parte da seleção; pastas entre volumes podem ser bloqueadas por segurança.", "Quarantine is on another drive for part of the selection; folders across volumes may be blocked for safety."],
     ["Último scan carregado: nenhum", "Last loaded scan: none"],
     ["Claro", "Light"],
+    ["Pasta grande", "Large folder"],
     ["Escuro", "Dark"],
     ["Sistema", "System"],
     ["Fechar detalhes", "Close details"],

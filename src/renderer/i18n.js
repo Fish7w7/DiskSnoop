@@ -389,6 +389,7 @@
       "Arquivo grande detectado no scan. Revise antes de mover, especialmente se for documento, vídeo ou arquivo pessoal.": "Large file detected in the scan. Review before moving it, especially if it is a document, video, or personal file.",
       "Este item parece ocupar espaço relevante e merece revisão.": "This item appears to use relevant space and deserves review.",
       "Pasta grande detectada no scan.": "Large folder detected in the scan.",
+      "Pasta grande": "Large folder",
       "Revisável: 100 MB+": "Reviewable: 100 MB+",
       "Revisável: 500 MB+": "Reviewable: 500 MB+",
       "Revisável: 1 GB+": "Reviewable: 1 GB+",

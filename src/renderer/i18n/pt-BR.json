@@ -167,6 +167,8 @@
     "doubt.modified": "Modificado",
     "doubt.category": "Categoria",
     "doubt.reason": "Motivo do achado",
+    "doubt.safety": "Segurança",
+    "doubt.guidance": "O que conferir",
     "doubt.signature": "Assinatura digital",
     "doubt.question": "É seguro apagar este item ou devo revisá-lo manualmente antes?",
     "candidates.copyDoubt": "Copiar dúvida",
