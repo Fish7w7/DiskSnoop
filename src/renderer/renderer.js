@@ -182,6 +182,24 @@ function icon(name, className = "") {
   return `<svg class="icon ${className}" viewBox="0 0 24 24" aria-hidden="true">${iconPaths[name] || ""}</svg>`;
 }
 
+const emptyIllustrations = {
+  folder: `<svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 18h19l6 7h23v25H8z"/><path d="M8 26h48"/><path d="M25 38h14"/></svg>`,
+  search: `<svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="28" cy="28" r="18"/><path d="m41 41 13 13"/><path d="M21 28h14"/></svg>`,
+  history: `<svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="33" cy="33" r="22"/><path d="M33 20v14l9 6"/><path d="M11 14v12h12"/><path d="M13 24A24 24 0 0 1 33 9"/></svg>`
+};
+
+function emptyPanel(kind, title, text = "") {
+  return `
+    <section class="empty-panel">
+      <div class="empty-illustration">${emptyIllustrations[kind] || emptyIllustrations.search}</div>
+      <div>
+        <h3>${escapeHtml(title)}</h3>
+        ${text ? `<p>${escapeHtml(text)}</p>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function appLogo(className = "") {
   return `<span class="logo ${className}"><img src="../assets/app-icon.png" alt=""></span>`;
 }
@@ -1489,7 +1507,7 @@ function foldersTab() {
                       <td>${badge(label, kind)}</td>
                     </tr>
                   `;
-                }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma pasta com os filtros atuais.</td></tr>`}
+                }).join("") || `<tr><td colspan="4" class="empty-state-cell">${emptyPanel("folder", "Nenhuma pasta com os filtros atuais.")}</td></tr>`}
               </tbody>
             </table>
           </section>
@@ -1655,7 +1673,7 @@ function largeFilesTab() {
                     <td>${relativeDate(item.modifiedAt)}</td>
                     <td>${safetyBadge(item.security)}</td>
                   </tr>
-                `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum arquivo grande com os filtros atuais.</td></tr>`}
+                `).join("") || `<tr><td colspan="5" class="empty-state-cell">${emptyPanel("search", "Nenhum arquivo grande com os filtros atuais.")}</td></tr>`}
               </tbody>
             </table>
           </section>
@@ -2001,7 +2019,7 @@ function candidatesTab() {
                     <td>${compactBytes(item.size)}</td>
                     <td>${candidatePrimaryStatus(item)}</td>
                   </tr>
-                `; }).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum candidato com os filtros atuais.</td></tr>`}
+                `; }).join("") || `<tr><td colspan="5" class="empty-state-cell">${emptyPanel("search", "Nenhum candidato com os filtros atuais.")}</td></tr>`}
               </tbody>
             </table>
           </section>
@@ -2227,7 +2245,7 @@ function duplicatesTab() {
                     <td>${compactBytes(group.reviewableBytes)}</td>
                     <td>${badge(group.confidence || "Possível", duplicateConfidenceKind(group.confidence))}</td>
                   </tr>
-                `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum possível duplicado neste scan.</td></tr>`}
+                `).join("") || `<tr><td colspan="5" class="empty-state-cell">${emptyPanel("search", "Nenhum possível duplicado neste scan.")}</td></tr>`}
               </tbody>
             </table>
           </section>
@@ -2489,7 +2507,7 @@ function leftoversTab() {
                       <td>${badge(label, kind)}</td>
                     </tr>
                   `;
-                }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma possível sobra de app encontrada neste scan.</td></tr>`}
+                }).join("") || `<tr><td colspan="4" class="empty-state-cell">${emptyPanel("folder", "Nenhuma possível sobra de app encontrada neste scan.")}</td></tr>`}
               </tbody>
             </table>
           </section>
@@ -2648,7 +2666,7 @@ function quarantineTab() {
                 <td>${relativeDate(item.movedAt)}</td>
                 <td>${quarantineStatusBadge(item.status)}</td>
               </tr>
-            `).join("") || `<tr><td colspan="6" class="empty-soft">${emptyMessage}</td></tr>`}
+            `).join("") || `<tr><td colspan="6" class="empty-state-cell">${emptyPanel("folder", emptyMessage)}</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -2847,7 +2865,7 @@ function historyTab() {
               </button>
             </div>
           </article>
-        `).join("") || `<section class="panel empty-panel">${icon("clock")}<div><h3>Nenhum scan registrado ainda</h3><p>Quando você concluir um scan, ele aparecerá aqui com métricas e link para carregar o relatório salvo.</p></div></section>`}
+        `).join("") || emptyPanel("history", "Nenhum scan registrado ainda", "Quando você concluir um scan, ele aparecerá aqui com métricas e link para carregar o relatório salvo.")}
       </section>
       <h2>Resumo atual</h2>
       <section class="panel history-panel">

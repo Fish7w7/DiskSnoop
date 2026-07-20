@@ -27,3 +27,12 @@ test("Pastas Grandes oferece texto de dúvida com contexto de segurança", () =>
   assert.match(renderer, /if \(context === "folder"\)[\s\S]*?safety:[\s\S]*?guidance:/);
   assert.match(renderer, /if \(context === "folder"\) return findFolder\(id\) \|\| state\.selectedItem;/);
 });
+
+test("estados vazios reutilizam ilustrações que herdam a cor do tema", () => {
+  for (const kind of ["folder", "search", "history"]) {
+    assert.match(renderer, new RegExp(`${kind}: .*stroke="currentColor"`));
+  }
+  assert.match(renderer, /function emptyPanel\(kind, title, text = ""\)/);
+  assert.match(css, /\.empty-illustration\s*\{[\s\S]*?color:\s*var\(--accent\);/);
+  assert.equal((renderer.match(/emptyPanel\("(?:folder|search|history)"/g) || []).length, 7);
+});

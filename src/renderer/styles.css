@@ -1739,14 +1739,24 @@ table {
 .empty-panel {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 22px;
+  gap: var(--space-6);
+  padding: var(--space-6);
 }
 
-.empty-panel .icon {
-  width: 22px;
-  height: 22px;
+.empty-illustration {
   color: var(--accent);
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.empty-state-cell {
+  padding: 0;
+  white-space: normal;
+}
+
+.empty-state-cell .empty-panel {
+  min-height: 128px;
+  text-align: left;
 }
 
 .empty-panel h3 {
