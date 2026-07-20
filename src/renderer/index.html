@@ -6,8 +6,12 @@
     <title>DiskSnoop</title>
     <script>
       try {
-        const t = localStorage.getItem("disksnoop-theme");
-        document.documentElement.dataset.theme = t || "system";
+        const bootTheme = new URLSearchParams(location.search).get("bootTheme");
+        const savedTheme = localStorage.getItem("disksnoop-theme");
+        const supportedThemes = ["light", "dark", "hacker", "neon", "system"];
+        document.documentElement.dataset.theme = supportedThemes.includes(bootTheme)
+          ? bootTheme
+          : supportedThemes.includes(savedTheme) ? savedTheme : "system";
         const language = localStorage.getItem("disksnoop-language");
         if (language) document.documentElement.lang = language;
       } catch {}

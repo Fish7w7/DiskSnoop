@@ -19,7 +19,8 @@
     "test:safety-integration": "node tests/safety-integration.test.js",
     "test:authenticode": "node tests/authenticode.test.js",
     "test:boot-theme": "node tests/boot-theme.test.js",
-    "test": "npm run test:quarantine && npm run test:safety-integration && npm run test:authenticode && npm run test:boot-theme && npm run test:i18n",
+    "test:ui": "node tests/ui-overlay.test.js",
+    "test": "npm run test:quarantine && npm run test:safety-integration && npm run test:authenticode && npm run test:boot-theme && npm run test:ui && npm run test:i18n",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
     "dist:portable": "electron-builder --win portable"

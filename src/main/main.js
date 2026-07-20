@@ -8,7 +8,7 @@ const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
 const { createInstalledAppsInventory } = require("./installed-apps");
 const { createAuthenticodeVerifier } = require("./authenticode");
-const { resolveBootBackground } = require("./boot-theme");
+const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -1024,7 +1024,8 @@ async function installDownloadedUpdate() {
 
 async function createWindow() {
   const savedSettings = await readJson("settings.json", null);
-  const bootBackground = resolveBootBackground(savedSettings?.theme, nativeTheme.shouldUseDarkColors);
+  const bootTheme = resolveBootThemePreference(savedSettings?.theme);
+  const bootBackground = resolveBootBackground(bootTheme, nativeTheme.shouldUseDarkColors);
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -1048,7 +1049,7 @@ async function createWindow() {
     if (!mainWindow?.isDestroyed()) mainWindow.show();
   });
 
-  await mainWindow.loadFile(paths.renderer);
+  await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
 }
 
 app.whenReady().then(createWindow);
