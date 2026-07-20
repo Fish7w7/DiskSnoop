@@ -88,6 +88,7 @@ const state = {
 };
 
 let lastRenderedTab = null;
+let pendingTableRefresh = 0;
 
 const tabs = [
   ["overview", "nav.overview", "home"],
@@ -198,6 +199,43 @@ function emptyPanel(kind, title, text = "") {
       </div>
     </section>
   `;
+}
+
+function skeletonRows(count = 6) {
+  return Array.from({ length: count }, () => `
+    <tr class="skeleton-table-row" aria-hidden="true">
+      <td colspan="100">
+        <div class="skeleton-row">
+          <div class="skeleton-block" style="width: 24px;"></div>
+          <div class="skeleton-block" style="width: 40%;"></div>
+          <div class="skeleton-block" style="width: 15%;"></div>
+          <div class="skeleton-block" style="width: 15%;"></div>
+          <div class="skeleton-block" style="width: 15%;"></div>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderTableRefresh(source) {
+  const tbody = $(".content .table-panel table tbody");
+  if (!tbody) {
+    render();
+    return;
+  }
+  tbody.innerHTML = skeletonRows();
+  const field = source?.dataset?.field || "";
+  const selectionStart = source?.selectionStart;
+  const selectionEnd = source?.selectionEnd;
+  if (pendingTableRefresh) clearTimeout(pendingTableRefresh);
+  pendingTableRefresh = setTimeout(() => {
+    pendingTableRefresh = 0;
+    render();
+    if (!field || typeof selectionStart !== "number") return;
+    const nextField = document.querySelector(`[data-field="${CSS.escape(field)}"]`);
+    nextField?.focus({ preventScroll: true });
+    nextField?.setSelectionRange?.(selectionStart, selectionEnd);
+  }, 32);
 }
 
 function appLogo(className = "") {
@@ -3812,6 +3850,15 @@ function updateSelectField(target) {
   return true;
 }
 
+function isTableFilterField(field) {
+  return [
+    "search", "sizeFilter", "sort", "fileSearch", "fileSizeFilter", "fileSort",
+    "candidateSearch", "candidateScope", "candidateSafety", "candidateConfidence",
+    "candidateAge", "candidateMinSize", "duplicateSearch", "duplicateMinWaste",
+    "leftoversSearch", "leftoversStatus", "leftoversLocation"
+  ].includes(field);
+}
+
 document.addEventListener("click", async (event) => {
   if (event.target.classList.contains("modal-overlay")) {
     const modal = state.modal;
@@ -4393,7 +4440,10 @@ document.addEventListener("input", (event) => {
     return;
   }
   if (event.target.matches("select")) {
-    if (updateSelectField(event.target) || updateSettingsControl(event.target)) render();
+    if (updateSelectField(event.target) || updateSettingsControl(event.target)) {
+      if (isTableFilterField(event.target.dataset.field)) renderTableRefresh(event.target);
+      else render();
+    }
     return;
   }
   const field = event.target.dataset.field;
@@ -4418,7 +4468,7 @@ document.addEventListener("input", (event) => {
     state.leftoversLimit = 80;
     state.detailOverlayOpen = false;
   }
-  render();
+  renderTableRefresh(event.target);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -4470,7 +4520,8 @@ document.addEventListener("change", async (event) => {
   }
 
   if (updateSelectField(event.target) || updateSettingsControl(event.target)) {
-    render();
+    if (isTableFilterField(event.target.dataset.field)) renderTableRefresh(event.target);
+    else render();
   }
 });
 

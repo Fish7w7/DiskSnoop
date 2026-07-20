@@ -36,3 +36,11 @@ test("estados vazios reutilizam ilustrações que herdam a cor do tema", () => {
   assert.match(css, /\.empty-illustration\s*\{[\s\S]*?color:\s*var\(--accent\);/);
   assert.equal((renderer.match(/emptyPanel\("(?:folder|search|history)"/g) || []).length, 7);
 });
+
+test("refiltros mostram skeleton sem misturar placeholders e dados", () => {
+  assert.match(renderer, /function skeletonRows\(count = 6\)/);
+  assert.match(renderer, /tbody\.innerHTML = skeletonRows\(\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?render\(\);[\s\S]*?\}, 32\);/);
+  assert.match(renderer, /if \(isTableFilterField\(event\.target\.dataset\.field\)\) renderTableRefresh\(event\.target\);/);
+  assert.match(css, /\.skeleton-block\s*\{[\s\S]*?background:\s*var\(--surfaceHover\);[\s\S]*?animation:\s*skeleton-pulse 1\.2s ease-in-out infinite;/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.skeleton-block\s*\{[\s\S]*?animation:\s*none;[\s\S]*?opacity:\s*0\.6;/);
+});

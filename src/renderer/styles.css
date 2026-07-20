@@ -1759,6 +1759,40 @@ table {
   text-align: left;
 }
 
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
+.skeleton-table-row:hover {
+  background: transparent;
+}
+
+.skeleton-table-row > td {
+  padding: 0;
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.skeleton-block {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surfaceHover);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .empty-panel h3 {
   margin: 0;
   font-size: 17px;
