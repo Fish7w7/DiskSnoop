@@ -1469,6 +1469,56 @@ table {
   margin-bottom: 18px;
 }
 
+.history-timeline {
+  overflow-x: auto;
+  margin-bottom: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-4) var(--space-2);
+  box-shadow: var(--shadow);
+}
+
+.history-timeline svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+  overflow: visible;
+}
+
+.history-timeline-line {
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.history-timeline-point {
+  cursor: pointer;
+}
+
+.history-timeline-point circle {
+  fill: var(--border);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 150ms ease, opacity 150ms ease, transform 150ms ease;
+}
+
+.history-timeline-point.has-impact circle {
+  fill: var(--accent);
+}
+
+.history-timeline-point:not(.unavailable):hover circle {
+  fill: var(--success);
+  transform: scale(1.12);
+}
+
+.history-timeline-point.unavailable {
+  cursor: not-allowed;
+}
+
+.history-timeline-point.unavailable circle {
+  opacity: 0.38;
+}
+
 .history-list {
   display: grid;
   gap: 12px;
@@ -2321,6 +2371,48 @@ input[type="checkbox"] {
   font-size: 15px;
 }
 
+.copy-doubt-button {
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.copy-doubt-button.copied {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--success);
+}
+
+.signature-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  background: var(--surfaceSubtle);
+  color: var(--textMuted);
+  font-size: var(--text-sm);
+}
+
+.signature-result .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.signature-result.valid {
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--success);
+}
+
+.signature-result.unsigned {
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  color: color-mix(in srgb, var(--warning) 86%, var(--textPrimary));
+}
+
+.signature-result.invalid {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
 .explanation {
   display: block;
 }
@@ -3152,6 +3244,10 @@ input[type="checkbox"] {
 .toast > span {
   min-width: 0;
   line-height: 1.45;
+}
+
+.toast.success {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
 }
 
 .toast button {

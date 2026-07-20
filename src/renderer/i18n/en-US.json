@@ -1,7 +1,7 @@
 {
   "languageName": "English",
   "appName": "DiskSnoop",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "messages": {
     "boot.loadingApp": "Preparing DiskSnoop...",
     "boot.openingApp": "Opening app...",
@@ -160,6 +160,26 @@
     "settings.language": "Language",
     "settings.languageLabel": "Interface language",
     "settings.languageHelp": "Choose the language used in the app menus, screens, and messages.",
+    "doubt.intro": "I found this item in a disk scanner (DiskSnoop):",
+    "doubt.path": "Path",
+    "doubt.size": "Size",
+    "doubt.modified": "Modified",
+    "doubt.category": "Category",
+    "doubt.reason": "Reason it was found",
+    "doubt.signature": "Digital signature",
+    "doubt.question": "Is it safe to delete this item, or should I review it manually first?",
+    "candidates.copyDoubt": "Copy question",
+    "candidates.copyDoubtDone": "Copied",
+    "candidates.copyDoubtToast": "Text copied. Paste it into an AI or search engine to investigate.",
+    "candidates.verifySignature": "Verify signature",
+    "candidates.verifyingSignature": "Verifying...",
+    "signature.valid": "Signed by: {signer}",
+    "signature.validMicrosoft": "Signed by Microsoft",
+    "signature.unsigned": "No digital signature",
+    "signature.invalid": "Invalid digital signature",
+    "signature.unknown": "Could not verify",
+    "signature.unknownSigner": "unknown signer",
+    "history.timelineAria": "Timeline of space freed by scan",
     "common.notAvailable": "-"
   }
 }

@@ -1,7 +1,7 @@
 {
   "languageName": "Português (Brasil)",
   "appName": "DiskSnoop",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "messages": {
     "boot.loadingApp": "Preparando DiskSnoop...",
     "boot.openingApp": "Abrindo app...",
@@ -160,6 +160,26 @@
     "settings.language": "Idioma",
     "settings.languageLabel": "Idioma da interface",
     "settings.languageHelp": "Escolha o idioma usado nos menus, telas e mensagens do app.",
+    "doubt.intro": "Encontrei este item em um scanner de disco (DiskSnoop):",
+    "doubt.path": "Caminho",
+    "doubt.size": "Tamanho",
+    "doubt.modified": "Modificado",
+    "doubt.category": "Categoria",
+    "doubt.reason": "Motivo do achado",
+    "doubt.signature": "Assinatura digital",
+    "doubt.question": "É seguro apagar este item ou devo revisá-lo manualmente antes?",
+    "candidates.copyDoubt": "Copiar dúvida",
+    "candidates.copyDoubtDone": "Copiado",
+    "candidates.copyDoubtToast": "Texto copiado. Cole em uma IA ou busca para tirar a dúvida.",
+    "candidates.verifySignature": "Verificar assinatura",
+    "candidates.verifyingSignature": "Verificando...",
+    "signature.valid": "Assinado por: {signer}",
+    "signature.validMicrosoft": "Assinado pela Microsoft",
+    "signature.unsigned": "Sem assinatura digital",
+    "signature.invalid": "Assinatura digital inválida",
+    "signature.unknown": "Não foi possível verificar",
+    "signature.unknownSigner": "assinante desconhecido",
+    "history.timelineAria": "Linha do tempo do espaço liberado por scan",
     "common.notAvailable": "-"
   }
 }

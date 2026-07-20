@@ -129,7 +129,7 @@ const i18n = global.window.diskSnoopI18n;
     ["Personalize como o DiskSnoop aparece e se comunica.", "Customize how DiskSnoop looks and communicates."],
     ["Atualização", "Update"],
     ["Versão instalada:", "Installed version:"],
-    ["Versão instalada: v1.5.0", "Installed version: v1.5.0"],
+    ["Versão instalada: v1.6.0", "Installed version: v1.6.0"],
     ["Abrir Atualização", "Open Update"],
     ["itens em quarentena", "items in quarantine"],
     ["scan no histórico", "scan in history"],
@@ -306,6 +306,14 @@ const i18n = global.window.diskSnoopI18n;
   assert.equal(i18n.translate("en-US", "boot.openingApp"), "Opening app...");
   assert.equal(i18n.translate("pt-BR", "settings.title"), "Configurações");
   assert.equal(i18n.translate("en-US", "settings.title"), "Settings");
+  assert.equal(i18n.translate("pt-BR", "candidates.copyDoubt"), "Copiar dúvida");
+  assert.equal(i18n.translate("en-US", "candidates.copyDoubt"), "Copy question");
+  assert.equal(i18n.translate("en-US", "doubt.path"), "Path");
+  assert.equal(i18n.translate("en-US", "candidates.verifySignature"), "Verify signature");
+  assert.equal(i18n.translate("en-US", "signature.valid", { signer: "Example Corp" }), "Signed by: Example Corp");
+  assert.equal(i18n.translate("pt-BR", "signature.validMicrosoft"), "Assinado pela Microsoft");
+  assert.equal(i18n.translate("pt-BR", "history.timelineAria"), "Linha do tempo do espaço liberado por scan");
+  assert.equal(i18n.translate("en-US", "history.timelineAria"), "Timeline of space freed by scan");
   assert.equal(i18n.translate("pt-BR", "sidebar.version", { version: "1.3.0" }), "Versão v1.3.0");
   assert.equal(i18n.translate("en-US", "sidebar.version", { version: "1.3.0" }), "Version v1.3.0");
   assert.equal(i18n.translate("en-US", "missing.translation.key"), "missing.translation.key");

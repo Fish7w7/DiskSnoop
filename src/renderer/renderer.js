@@ -10,9 +10,10 @@ if (!api) {
 }
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
+const SIGNABLE_EXTENSIONS = new Set([".exe", ".dll", ".msi", ".sys", ".cab", ".ocx"]);
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.5.0";
+let APP_VERSION_LABEL = "1.6.0";
 
 const state = {
   screen: "welcome",
@@ -61,6 +62,9 @@ const state = {
   paused: false,
   toast: "",
   quarantineUndo: null,
+  copiedDoubtKey: "",
+  signatureCache: new Map(),
+  signatureLoading: new Set(),
   update: {
     status: "idle",
     currentVersion: APP_VERSION_LABEL,
@@ -1765,6 +1769,108 @@ function cleanCandidateType(type) {
   return type;
 }
 
+function localizedRenderedText(value) {
+  const source = String(value ?? "");
+  if (!source || currentLanguage() === "pt-BR") return source;
+  return window.diskSnoopI18n?.translateRenderedText?.(currentLanguage(), source) || source;
+}
+
+function signatureLabelFor(result) {
+  if (!result || result.status === "not-applicable") return "";
+  if (result.status === "valid" && result.isMicrosoft) return t("signature.validMicrosoft");
+  if (result.status === "valid") {
+    return t("signature.valid", { signer: result.signer || t("signature.unknownSigner") });
+  }
+  if (result.status === "unsigned") return t("signature.unsigned");
+  if (result.status === "invalid") return t("signature.invalid");
+  return t("signature.unknown");
+}
+
+function isSignablePath(itemPath) {
+  const cleanPath = String(itemPath || "").split(/[?#]/, 1)[0];
+  const dotIndex = cleanPath.lastIndexOf(".");
+  return dotIndex >= 0 && SIGNABLE_EXTENSIONS.has(cleanPath.slice(dotIndex).toLowerCase());
+}
+
+function signatureResultBadge(result) {
+  if (!result || result.status === "not-applicable") return "";
+  const tone = result.status === "valid" ? "valid" : result.status === "unsigned" ? "unsigned" : result.status === "invalid" ? "invalid" : "unknown";
+  return `<span class="signature-result ${tone}">${icon(result.status === "valid" ? "check" : "shield")}<span>${escapeHtml(signatureLabelFor(result))}</span></span>`;
+}
+
+function signatureControls(item) {
+  if (!isSignablePath(item?.path)) return "";
+  const cached = state.signatureCache.get(item.path);
+  if (cached) return signatureResultBadge(cached);
+  const loading = state.signatureLoading.has(item.path);
+  return `<button class="secondary" data-action="verify-signature" data-id="${escapeHtml(item.id)}" ${loading ? "disabled" : ""}>${icon("shield")}${escapeHtml(t(loading ? "candidates.verifyingSignature" : "candidates.verifySignature"))}</button>`;
+}
+
+function doubtItemForContext(item, context = "candidate") {
+  if (!item) return null;
+  if (context === "duplicate") {
+    const copies = item.items || [];
+    const reference = copies[0] || {};
+    const summary = duplicateReviewSummary(item);
+    return {
+      ...reference,
+      id: item.id,
+      name: item.name,
+      path: reference.path || "-",
+      paths: copies.map((copy) => copy.path).filter(Boolean),
+      size: item.size,
+      modifiedAt: reference.modifiedAt,
+      type: "Possível duplicado",
+      reason: item.reason || summary.text
+    };
+  }
+  if (context === "leftover") {
+    const match = matchingInstalledApp(item);
+    const [status] = leftoverStatus(item);
+    const summary = leftoverReviewSummary(status, match);
+    return { ...item, type: status, reason: item.reason || summary.text };
+  }
+  return item;
+}
+
+function buildDoubtText(item, context = "candidate") {
+  const normalized = doubtItemForContext(item, context);
+  if (!normalized) return "";
+  const paths = normalized.paths?.length ? normalized.paths : [normalized.path || "-"];
+  const lines = [t("doubt.intro")];
+  paths.forEach((itemPath, index) => {
+    const pathLabel = paths.length > 1 ? `${t("doubt.path")} ${index + 1}` : t("doubt.path");
+    lines.push(`- ${pathLabel}: ${itemPath}`);
+  });
+  lines.push(`- ${t("doubt.size")}: ${compactBytes(normalized.size)}`);
+  lines.push(`- ${t("doubt.modified")}: ${normalized.modifiedAt ? fullDate(normalized.modifiedAt) : "-"}`);
+  lines.push(`- ${t("doubt.category")}: ${localizedRenderedText(cleanCandidateType(normalized.type || "-"))}`);
+  if (normalized.reason) lines.push(`- ${t("doubt.reason")}: ${localizedRenderedText(normalized.reason)}`);
+
+  const signatureEntries = paths
+    .map((itemPath) => [itemPath, state.signatureCache.get(itemPath)])
+    .filter(([, result]) => result && result.status !== "not-applicable");
+  signatureEntries.forEach(([itemPath, result]) => {
+    const suffix = paths.length > 1 ? ` (${itemPath})` : "";
+    lines.push(`- ${t("doubt.signature")}${suffix}: ${signatureLabelFor(result)}`);
+  });
+  lines.push("", t("doubt.question"));
+  return lines.join("\n");
+}
+
+function doubtItemByContext(id, context) {
+  if (context === "duplicate") return findDuplicateGroup(id);
+  if (context === "leftover") return findFolder(id) || state.selectedItem;
+  return findCandidate(id) || state.selectedItem;
+}
+
+function copyDoubtButton(item, context) {
+  if (!item?.id) return "";
+  const key = `${context}:${item.id}`;
+  const copied = state.copiedDoubtKey === key;
+  return `<button class="secondary copy-doubt-button ${copied ? "copied" : ""}" data-action="copy-doubt" data-context="${escapeHtml(context)}" data-id="${escapeHtml(item.id)}">${icon(copied ? "check" : "clipboard")}${escapeHtml(t(copied ? "candidates.copyDoubtDone" : "candidates.copyDoubt"))}</button>`;
+}
+
 function selectionSimulationPanel(selectedItems, visibleItems) {
   const selectedSize = selectedItems.reduce((sum, item) => sum + (item.size || 0), 0);
   const safePlan = visibleItems.filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");
@@ -1899,6 +2005,8 @@ function candidateDetails(item) {
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir</button>
         <button class="secondary" data-action="show-selected">${icon("list")}Ver conteúdo</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
+        ${signatureControls(item)}
+        ${copyDoubtButton(item, "candidate")}
         <button class="secondary" data-action="quarantine-selected-item" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
       ${canQuarantine && crossVolumeQuarantineNote(item) ? reviewCallout("Atenção antes de mover", crossVolumeQuarantineNote(item), "shield", "warning") : ""}
@@ -2102,6 +2210,9 @@ function duplicateDetails(group) {
         `).join("")}
       </div>
       ${reviewCallout("Como revisar", "A primeira linha é só a cópia mais recente por data de modificação. Mesmo com hash confirmado, abra os caminhos quando houver dúvida antes de mover qualquer cópia.", "shield")}
+      <div class="detail-actions">
+        ${copyDoubtButton(group, "duplicate")}
+      </div>
     </section>
   `;
 }
@@ -2360,6 +2471,7 @@ function leftoverDetails(item) {
         <button class="secondary" data-action="open-selected">${icon("folder")}Abrir pasta</button>
         <button class="secondary" data-action="show-selected">${icon("list")}Ver conteúdo</button>
         <button class="secondary" data-action="ignore-selected">${icon("ban")}Ignorar</button>
+        ${copyDoubtButton(item, "leftover")}
         <button class="secondary" data-action="quarantine-leftover" ${canQuarantine ? "" : "disabled"}>${icon("shield")}Mover para quarentena</button>
       </div>
       ${canQuarantine && crossVolumeQuarantineNote(item) ? reviewCallout("Atenção antes de mover", crossVolumeQuarantineNote(item), "shield", "warning") : ""}
@@ -2500,6 +2612,47 @@ function quarantineTab() {
   `;
 }
 
+function historyTimeline(scans) {
+  if (!scans.length) return "";
+  const ordered = [...scans].slice(0, 20).reverse();
+  const values = ordered.map((item) => Number(item.permanentlyDeleted || 0));
+  const maxValue = Math.max(1, ...values);
+  const minRadius = 5;
+  const maxRadius = 18;
+  const width = 900;
+  const height = 160;
+  const paddingX = 40;
+  const baselineY = height / 2;
+  const step = ordered.length > 1 ? (width - paddingX * 2) / (ordered.length - 1) : 0;
+  const points = ordered.map((item, index) => {
+    const x = ordered.length === 1 ? width / 2 : paddingX + step * index;
+    const freed = Number(item.permanentlyDeleted || 0);
+    const radius = freed > 0
+      ? minRadius + Math.sqrt(freed / maxValue) * (maxRadius - minRadius)
+      : minRadius * 0.6;
+    return { x, y: baselineY, radius, item, freed };
+  });
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+  return `
+    <section class="history-timeline">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("history.timelineAria"))}">
+        <path d="${linePath}" class="history-timeline-line" fill="none" vector-effect="non-scaling-stroke" />
+        ${points.map((point) => {
+          const available = point.item.snapshotAvailable !== false;
+          const tooltip = `${fullDate(point.item.date)} — ${compactBytes(point.freed)}`;
+          return `
+            <g class="history-timeline-point ${point.freed > 0 ? "has-impact" : "no-impact"} ${available ? "" : "unavailable"}"
+               ${available ? `data-action="load-history-scan" data-id="${escapeHtml(point.item.id)}"` : "aria-disabled=\"true\""}>
+              <title>${escapeHtml(tooltip)}</title>
+              <circle cx="${point.x}" cy="${point.y}" r="${point.radius}" />
+            </g>
+          `;
+        }).join("")}
+      </svg>
+    </section>
+  `;
+}
+
 function historyTab() {
   const scans = state.history || [];
   const totalMoved = scans.reduce((sum, item) => sum + (item.movedToQuarantine || 0), 0);
@@ -2523,6 +2676,7 @@ function historyTab() {
         <article class="history-summary-card"><span>Excluído permanente</span><strong>${compactBytes(totalDeleted)}</strong></article>
         <article class="history-summary-card"><span>Relatórios indisponíveis</span><strong>${unavailable}</strong></article>
       </section>
+      ${historyTimeline(scans)}
       <section class="history-list">
         ${scans.map((item) => `
           <article class="history-scan-card">
@@ -3744,6 +3898,40 @@ document.addEventListener("click", async (event) => {
   if (action === "show-more-leftovers") {
     state.leftoversLimit += 80;
     render();
+  }
+  if (action === "verify-signature") {
+    const item = findCandidate(id) || state.selectedItem;
+    if (!item?.path || !isSignablePath(item.path) || state.signatureCache.has(item.path)) return;
+    state.signatureLoading.add(item.path);
+    render();
+    try {
+      const result = await api.verifySignature(item.path);
+      state.signatureCache.set(item.path, result || { status: "unknown" });
+    } catch {
+      state.signatureCache.set(item.path, { status: "unknown" });
+      setToast({ message: t("signature.unknown"), tone: "warning" });
+    } finally {
+      state.signatureLoading.delete(item.path);
+      render();
+    }
+    return;
+  }
+  if (action === "copy-doubt") {
+    const context = target.dataset.context || "candidate";
+    const item = doubtItemByContext(id, context);
+    if (!item) return;
+    const text = buildDoubtText(item, context);
+    if (!text) return;
+    api.copyText(text);
+    const copiedKey = `${context}:${id}`;
+    state.copiedDoubtKey = copiedKey;
+    setToast({ message: t("candidates.copyDoubtToast"), tone: "success" });
+    setTimeout(() => {
+      if (state.copiedDoubtKey !== copiedKey) return;
+      state.copiedDoubtKey = "";
+      render();
+    }, 1800);
+    return;
   }
   if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path, state.selectedItem);
   if (action === "open-path") await showPathWithFeedback(target.dataset.path);

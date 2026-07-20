@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, clipboard } = require("electron");
 
 async function unwrapInvoke(channel, payload) {
   const result = await ipcRenderer.invoke(channel, payload);
@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld("diskScope", {
   getPathProtection: (targetPath) => ipcRenderer.sendSync("path:protection", targetPath),
   isElevatedDeletionRisk: (targetPath) => ipcRenderer.sendSync("path:deletionRisk", targetPath),
   listInstalledApps: () => ipcRenderer.invoke("apps:listInstalled"),
+  verifySignature: (targetPath) => unwrapInvoke("signature:verify", targetPath),
+  copyText: (text) => {
+    clipboard.writeText(String(text || ""));
+    return true;
+  },
   createRestorePoint: () => unwrapInvoke("system:createRestorePoint"),
   addIgnoredPath: (targetPath) => ipcRenderer.invoke("ignore:add", targetPath),
   startScan: (options) => ipcRenderer.invoke("scan:start", options),
