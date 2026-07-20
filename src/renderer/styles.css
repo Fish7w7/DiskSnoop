@@ -2858,6 +2858,88 @@ input[type="checkbox"] {
   font-size: 14px;
 }
 
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--textPrimary);
+  cursor: pointer;
+}
+
+.theme-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.theme-card > .icon {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.settings-card .theme-swatches {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.settings-card .swatch {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 4px;
+}
+
+.settings-card .theme-card-label {
+  margin: 0;
+  color: var(--textPrimary);
+  font-weight: 600;
+}
+
+[data-theme-preview="light"] .swatch-bg,
+[data-theme-preview="system"] .swatch-bg { background: #fbfcfe; }
+[data-theme-preview="light"] .swatch-surface,
+[data-theme-preview="system"] .swatch-surface { background: #ffffff; }
+[data-theme-preview="light"] .swatch-accent,
+[data-theme-preview="system"] .swatch-accent { background: #0d6efd; }
+
+[data-theme-preview="dark"] .swatch-bg { background: #05070a; }
+[data-theme-preview="dark"] .swatch-surface { background: #0d1117; }
+[data-theme-preview="dark"] .swatch-accent { background: #2f80ff; }
+
+[data-theme-preview="hacker"] .swatch-bg { background: #020604; }
+[data-theme-preview="hacker"] .swatch-surface { background: #07100b; }
+[data-theme-preview="hacker"] .swatch-accent { background: #27e66e; }
+
+[data-theme-preview="neon"] .swatch-bg { background: #090814; }
+[data-theme-preview="neon"] .swatch-surface { background: #141224; }
+[data-theme-preview="neon"] .swatch-accent { background: #1aa7ff; }
+
+@media (prefers-color-scheme: dark) {
+  [data-theme-preview="system"] .swatch-bg { background: #0e1117; }
+  [data-theme-preview="system"] .swatch-surface { background: #151a22; }
+  [data-theme-preview="system"] .swatch-accent { background: #2f80ff; }
+}
+
 .setting-row {
   display: grid;
   grid-template-columns: 1fr 420px;

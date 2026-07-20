@@ -126,7 +126,6 @@ function themeDisplayLabel(theme) {
   return themeDisplayLabels[currentLanguage()]?.[theme] || themeLabels[theme] || themeLabels.light;
 }
 
-const availableThemes = ["Claro", "Escuro", "Hacker", "Neon", "Sistema"];
 const languageOptions = [
   ["Português (Brasil)", "pt-BR"],
   ["English", "en-US"]
@@ -2154,6 +2153,30 @@ function isProtectedUiPath(itemPath) {
   return protectedPathInfo(itemPath).protected;
 }
 
+function themeCardPicker(currentTheme) {
+  const themes = ["light", "dark", "hacker", "neon", "system"];
+  return `
+    <div class="theme-picker">
+      ${themes.map((value) => `
+        <button
+          class="theme-card ${value === currentTheme ? "is-active" : ""}"
+          data-action="select-theme"
+          data-value="${value}"
+          type="button"
+        >
+          <span class="theme-swatches" data-theme-preview="${value}">
+            <span class="swatch swatch-bg"></span>
+            <span class="swatch swatch-surface"></span>
+            <span class="swatch swatch-accent"></span>
+          </span>
+          <span class="theme-card-label">${escapeHtml(themeDisplayLabel(value))}</span>
+          ${value === currentTheme ? icon("check") : ""}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function detailOverlay(title, content, hasSelection) {
   if (!state.detailOverlayOpen || !hasSelection) return "";
   const closeLabel = t("details.close");
@@ -3121,7 +3144,7 @@ function settingsTab() {
       <div class="settings-detail-heading"><span>${icon("settings")}</span><div><h2>Aparência e idioma</h2><p>Personalize como o DiskSnoop aparece e se comunica.</p></div></div>
       <section class="settings-card">
         <div><p>${escapeHtml(t("settings.currentTheme"))}</p><span>${escapeHtml(t("settings.themeHelp"))}</span></div>
-        ${selectControl("theme", availableThemes, themeLabels[state.settings.theme] || "Claro")}
+        ${themeCardPicker(state.settings.theme)}
       </section>
       <section class="settings-card">
         <div><p>${escapeHtml(t("settings.languageLabel"))}</p><span>${escapeHtml(t("settings.languageHelp"))}</span></div>
@@ -4048,6 +4071,14 @@ document.addEventListener("click", async (event) => {
   if (action === "settings-section") {
     state.settingsSection = target.dataset.section || "appearance";
     render();
+  }
+  if (action === "select-theme") {
+    const theme = target.dataset.value;
+    if (!themeLabels[theme]) return;
+    state.settings.theme = theme;
+    state.settings = normalizeTheme(state.settings);
+    render();
+    persistSettingsSoon();
   }
   if (action === "overview-safe-plan") {
     const safePlan = visibleCandidates().filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");

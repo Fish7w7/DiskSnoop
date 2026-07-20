@@ -44,3 +44,13 @@ test("refiltros mostram skeleton sem misturar placeholders e dados", () => {
   assert.match(css, /\.skeleton-block\s*\{[\s\S]*?background:\s*var\(--surfaceHover\);[\s\S]*?animation:\s*skeleton-pulse 1\.2s ease-in-out infinite;/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.skeleton-block\s*\{[\s\S]*?animation:\s*none;[\s\S]*?opacity:\s*0\.6;/);
 });
+
+test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
+  assert.match(renderer, /function themeCardPicker\(currentTheme\)/);
+  assert.doesNotMatch(renderer, /selectControl\("theme"/);
+  for (const theme of ["light", "dark", "hacker", "neon", "system"]) {
+    assert.match(css, new RegExp(`\\[data-theme-preview="${theme}"\\] \\.swatch-bg`));
+  }
+  assert.match(renderer, /if \(action === "select-theme"\)[\s\S]*?state\.settings\.theme = theme;[\s\S]*?render\(\);[\s\S]*?persistSettingsSoon\(\);/);
+  assert.match(css, /\.theme-picker\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill, minmax\(120px, 1fr\)\);/);
+});
