@@ -4763,12 +4763,26 @@ input[type="checkbox"] {
 }
 
 .detail-overlay-body > .candidate-detail-panel,
-.detail-overlay-body > .explanation {
+.detail-overlay-body > .explanation,
+.detail-overlay-body > .detail-strip {
   border: 0;
   border-radius: 0;
   background: transparent;
   padding: 0;
   box-shadow: none;
+}
+
+.detail-overlay-body > .detail-strip {
+  display: block;
+}
+
+.detail-overlay .detail-strip > .detail-icon {
+  display: none;
+}
+
+.detail-overlay .detail-copy h3 {
+  margin-top: 0;
+  font-size: var(--text-base);
 }
 
 .detail-overlay .candidate-detail-grid {

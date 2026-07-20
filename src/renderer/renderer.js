@@ -1466,33 +1466,36 @@ function foldersTab() {
         <div class="select-shell wide-select"><select data-field="sizeFilter"><option value="1" ${state.sizeFilter === 1 ? "selected" : ""}>Min: 1 GB</option><option value="5" ${state.sizeFilter === 5 ? "selected" : ""}>Min: 5 GB</option><option value="10" ${state.sizeFilter === 10 ? "selected" : ""}>Min: 10 GB</option></select>${icon("chevron")}</div>
         <div class="select-shell wide-select"><select data-field="sort"><option value="size" ${state.sort === "size" ? "selected" : ""}>Ordenar: tam.</option><option value="date" ${state.sort === "date" ? "selected" : ""}>Ordenar: data</option><option value="risk" ${state.sort === "risk" ? "selected" : ""}>Ordenar: risco</option></select>${icon("chevron")}</div>
       </div>
-      <section class="panel table-panel">
-        <table class="folders-table">
-          <thead><tr><th>Nome</th><th>Tamanho</th><th>Modificado</th><th>Risco</th></tr></thead>
-          <tbody>
-            ${items.slice(0, 60).map((item) => {
-              const [label, kind] = folderRisk(item);
-              const protection = protectedPathInfo(item.path);
-              return `
-                <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-folder" data-id="${escapeHtml(item.id)}">
-                  <td class="name-cell" title="${escapeHtml(item.name)}">
-                    <div class="name-cell-layout">
-                      <span class="folder-icon">${icon("folder")}</span>
-                      <span class="name-cell-copy">${escapeHtml(item.name)}</span>
-                      ${protection.protected ? `<span class="protection-marker" title="${escapeHtml(`Protegido: ${protection.reason}`)}" aria-label="Componente protegido">${icon("lock")}</span>` : ""}
-                    </div>
-                  </td>
-                  <td>${compactBytes(item.size)}</td>
-                  <td>${relativeDate(item.modifiedAt)}</td>
-                  <td>${badge(label, kind)}</td>
-                </tr>
-              `;
-            }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma pasta com os filtros atuais.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="master-detail-layout">
+        <div class="master-detail-list">
+          <section class="panel table-panel">
+            <table class="folders-table">
+              <thead><tr><th>Nome</th><th>Tamanho</th><th>Modificado</th><th>Risco</th></tr></thead>
+              <tbody>
+                ${items.slice(0, 60).map((item) => {
+                  const [label, kind] = folderRisk(item);
+                  const protection = protectedPathInfo(item.path);
+                  return `
+                    <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-folder" data-id="${escapeHtml(item.id)}">
+                      <td class="name-cell" title="${escapeHtml(item.name)}">
+                        <div class="name-cell-layout">
+                          <span class="folder-icon">${icon("folder")}</span>
+                          <span class="name-cell-copy">${escapeHtml(item.name)}</span>
+                          ${protection.protected ? `<span class="protection-marker" title="${escapeHtml(`Protegido: ${protection.reason}`)}" aria-label="Componente protegido">${icon("lock")}</span>` : ""}
+                        </div>
+                      </td>
+                      <td>${compactBytes(item.size)}</td>
+                      <td>${relativeDate(item.modifiedAt)}</td>
+                      <td>${badge(label, kind)}</td>
+                    </tr>
+                  `;
+                }).join("") || `<tr><td colspan="4" class="empty-soft">Nenhuma pasta com os filtros atuais.</td></tr>`}
+              </tbody>
+            </table>
+          </section>
+        </div>
+        ${detailOverlay("Detalhes", folderDetails(state.selectedItem), Boolean(state.selectedItem))}
       </section>
-      <h2>Detalhes</h2>
-      ${folderDetails(state.selectedItem)}
     </section>
   `;
 }
@@ -1637,24 +1640,27 @@ function largeFilesTab() {
           ${icon("chevron")}
         </div>
       </div>
-      <section class="panel table-panel">
-        <table class="large-files-table">
-          <thead><tr><th>Arquivo</th><th>Caminho</th><th>Tamanho</th><th>Modificado</th><th>Selo</th></tr></thead>
-          <tbody>
-            ${items.slice(0, 120).map((item) => `
-              <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-file" data-id="${escapeHtml(item.id)}">
-                <td class="name-cell"><span class="folder-icon">${icon("file")}</span><span>${escapeHtml(item.name)}</span></td>
-                <td class="path-cell">${escapeHtml(item.path)}</td>
-                <td>${compactBytes(item.size)}</td>
-                <td>${relativeDate(item.modifiedAt)}</td>
-                <td>${safetyBadge(item.security)}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum arquivo grande com os filtros atuais.</td></tr>`}
-          </tbody>
-        </table>
+      <section class="master-detail-layout">
+        <div class="master-detail-list">
+          <section class="panel table-panel">
+            <table class="large-files-table">
+              <thead><tr><th>Arquivo</th><th>Caminho</th><th>Tamanho</th><th>Modificado</th><th>Selo</th></tr></thead>
+              <tbody>
+                ${items.slice(0, 120).map((item) => `
+                  <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-file" data-id="${escapeHtml(item.id)}">
+                    <td class="name-cell"><span class="folder-icon">${icon("file")}</span><span>${escapeHtml(item.name)}</span></td>
+                    <td class="path-cell">${escapeHtml(item.path)}</td>
+                    <td>${compactBytes(item.size)}</td>
+                    <td>${relativeDate(item.modifiedAt)}</td>
+                    <td>${safetyBadge(item.security)}</td>
+                  </tr>
+                `).join("") || `<tr><td colspan="5" class="empty-soft">Nenhum arquivo grande com os filtros atuais.</td></tr>`}
+              </tbody>
+            </table>
+          </section>
+        </div>
+        ${detailOverlay("Detalhes", fileDetails(state.selectedItem), Boolean(state.selectedItem))}
       </section>
-      <h2>Detalhes</h2>
-      ${fileDetails(state.selectedItem)}
     </section>
   `;
 }
@@ -3721,7 +3727,7 @@ function updateSettingsControl(target) {
 function updateSelectField(target) {
   const field = target?.dataset?.field;
   if (!field) return false;
-  if (["candidateScope", "candidateSafety", "candidateConfidence", "candidateAge", "candidateMinSize", "duplicateMinWaste", "leftoversStatus", "leftoversLocation"].includes(field)) {
+  if (["sizeFilter", "sort", "fileSizeFilter", "fileSort", "candidateScope", "candidateSafety", "candidateConfidence", "candidateAge", "candidateMinSize", "duplicateMinWaste", "leftoversStatus", "leftoversLocation"].includes(field)) {
     state.detailOverlayOpen = false;
   }
   if (field === "sizeFilter") state.sizeFilter = Number(target.value || 1);
@@ -3972,10 +3978,12 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "select-folder") {
     state.selectedItem = findFolder(id);
+    state.detailOverlayOpen = true;
     render();
   }
   if (action === "select-file") {
     state.selectedItem = findCandidate(id);
+    state.detailOverlayOpen = true;
     render();
   }
   if (action === "select-candidate") {
@@ -4357,7 +4365,11 @@ document.addEventListener("input", (event) => {
   const field = event.target.dataset.field;
   if (!field) return;
   if (field === "search") state.search = event.target.value;
-  if (field === "fileSearch") state.fileSearch = event.target.value;
+  if (field === "search") state.detailOverlayOpen = false;
+  if (field === "fileSearch") {
+    state.fileSearch = event.target.value;
+    state.detailOverlayOpen = false;
+  }
   if (field === "candidateSearch") {
     state.candidateSearch = event.target.value;
     state.candidateLimit = 80;

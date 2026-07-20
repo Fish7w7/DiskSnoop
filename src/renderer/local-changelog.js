@@ -6,7 +6,7 @@ window.diskSnoopLocalChangelog = {
         {
           title: "Interface mais estável",
           items: [
-            "Candidatos, Duplicados e Sobras de Apps agora abrem os detalhes sob demanda em um painel sobreposto e dispensável, devolvendo todo o espaço à lista quando ele está fechado.",
+            "Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps agora abrem os detalhes sob demanda em um painel sobreposto e dispensável, devolvendo todo o espaço à lista quando ele está fechado.",
             "Os temas Hacker, Neon e Sistema agora aparecem nas Configurações junto de Claro e Escuro, com cores e superfícies ajustadas.",
             "A inicialização passa a exibir o primeiro quadro já com a cor do tema escolhido, eliminando flashes de cores incorretas antes da tela de carregamento.",
             "O card de progresso do scan permanece centralizado mesmo quando o caminho exibido muda de tamanho."
@@ -20,7 +20,7 @@ window.diskSnoopLocalChangelog = {
         {
           title: "A more stable interface",
           items: [
-            "Candidates, Duplicates, and App Leftovers now open details on demand in a dismissible overlay, returning all available space to the list when closed.",
+            "Large Folders, Large Files, Candidates, Duplicates, and App Leftovers now open details on demand in a dismissible overlay, returning all available space to the list when closed.",
             "Hacker, Neon, and System themes now appear in Settings alongside Light and Dark, with adjusted colors and surfaces.",
             "Startup now displays its first frame using the selected theme color, eliminating incorrect color flashes before the loading screen.",
             "The scan progress card remains centered even when the displayed path changes length."
