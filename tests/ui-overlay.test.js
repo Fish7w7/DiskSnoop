@@ -54,3 +54,15 @@ test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
   assert.match(renderer, /if \(action === "select-theme"\)[\s\S]*?state\.settings\.theme = theme;[\s\S]*?render\(\);[\s\S]*?persistSettingsSoon\(\);/);
   assert.match(css, /\.theme-picker\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill, minmax\(120px, 1fr\)\);/);
 });
+
+test("transição de aba só dispara quando a aba realmente muda", () => {
+  assert.match(renderer, /const shouldAnimateTab = state\.screen === "app" && lastRenderedTab !== null && lastRenderedTab !== state\.tab;/);
+  assert.match(renderer, /if \(shouldAnimateTab\) \{[\s\S]*?classList\.add\("tab-enter"\);/);
+  assert.match(renderer, /lastRenderedTab = state\.screen === "app" \? state\.tab : null;/);
+  assert.match(css, /\.tab-enter\s*\{\s*animation:\s*tab-fade-in 180ms ease-out;/);
+});
+
+test("transições de aba e tema respeitam movimento reduzido", () => {
+  assert.match(css, /body,[\s\S]*?\.settings-card\s*\{\s*transition:\s*background-color 180ms ease, border-color 180ms ease, color 180ms ease;/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.settings-card\s*\{\s*transition:\s*none;[\s\S]*?\.tab-enter\s*\{\s*animation:\s*none;/);
+});

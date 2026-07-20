@@ -3269,6 +3269,7 @@ function render() {
   document.documentElement.lang = currentLanguage();
   const app = $("#app");
   const content = $(".content");
+  const shouldAnimateTab = state.screen === "app" && lastRenderedTab !== null && lastRenderedTab !== state.tab;
   const shouldRestoreContentScroll = state.screen === "app" && lastRenderedTab === state.tab && content;
   const contentScrollTop = shouldRestoreContentScroll ? content.scrollTop : 0;
 
@@ -3281,6 +3282,14 @@ function render() {
   if (shouldRestoreContentScroll) {
     const nextContent = $(".content");
     if (nextContent) nextContent.scrollTop = contentScrollTop;
+  }
+  if (shouldAnimateTab) {
+    const nextContent = $(".content");
+    if (nextContent) {
+      nextContent.classList.remove("tab-enter");
+      void nextContent.offsetWidth;
+      nextContent.classList.add("tab-enter");
+    }
   }
   const detailPanel = $(".detail-overlay-panel");
   if (detailPanel) detailPanel.focus({ preventScroll: true });

@@ -125,6 +125,45 @@ body {
   user-select: none;
 }
 
+body,
+.app-header,
+.sidebar,
+.panel,
+.metric-card,
+.settings-card {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.tab-enter {
+  animation: tab-fade-in 180ms ease-out;
+}
+
+@keyframes tab-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .app-header,
+  .sidebar,
+  .panel,
+  .metric-card,
+  .settings-card {
+    transition: none;
+  }
+
+  .tab-enter {
+    animation: none;
+  }
+}
+
 input,
 textarea,
 select,
