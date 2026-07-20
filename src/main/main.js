@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, nativeTheme } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
@@ -8,6 +8,7 @@ const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
 const { createInstalledAppsInventory } = require("./installed-apps");
 const { createAuthenticodeVerifier } = require("./authenticode");
+const { resolveBootBackground } = require("./boot-theme");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -1022,6 +1023,8 @@ async function installDownloadedUpdate() {
 }
 
 async function createWindow() {
+  const savedSettings = await readJson("settings.json", null);
+  const bootBackground = resolveBootBackground(savedSettings?.theme, nativeTheme.shouldUseDarkColors);
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -1031,7 +1034,8 @@ async function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     icon: paths.icon,
-    backgroundColor: "#f8fafc",
+    backgroundColor: bootBackground,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -1040,6 +1044,9 @@ async function createWindow() {
     }
   });
   mainWindow.setIcon(paths.icon);
+  mainWindow.once("ready-to-show", () => {
+    if (!mainWindow?.isDestroyed()) mainWindow.show();
+  });
 
   await mainWindow.loadFile(paths.renderer);
 }

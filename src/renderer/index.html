@@ -7,7 +7,7 @@
     <script>
       try {
         const t = localStorage.getItem("disksnoop-theme");
-        if (t) document.documentElement.dataset.theme = t;
+        document.documentElement.dataset.theme = t || "system";
         const language = localStorage.getItem("disksnoop-language");
         if (language) document.documentElement.lang = language;
       } catch {}
@@ -32,7 +32,7 @@
           </div>
           <div class="boot-meta">
             <span class="boot-dot"></span>
-            <span class="boot-version">v1.6.0</span>
+            <span class="boot-version">v1.7.0</span>
           </div>
         </section>
       </main>
