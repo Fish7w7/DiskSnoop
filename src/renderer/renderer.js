@@ -3922,15 +3922,19 @@ document.addEventListener("click", async (event) => {
     if (!item) return;
     const text = buildDoubtText(item, context);
     if (!text) return;
-    api.copyText(text);
-    const copiedKey = `${context}:${id}`;
-    state.copiedDoubtKey = copiedKey;
-    setToast({ message: t("candidates.copyDoubtToast"), tone: "success" });
-    setTimeout(() => {
-      if (state.copiedDoubtKey !== copiedKey) return;
-      state.copiedDoubtKey = "";
-      render();
-    }, 1800);
+    try {
+      await api.copyText(text);
+      const copiedKey = `${context}:${id}`;
+      state.copiedDoubtKey = copiedKey;
+      setToast({ message: t("candidates.copyDoubtToast"), tone: "success" });
+      setTimeout(() => {
+        if (state.copiedDoubtKey !== copiedKey) return;
+        state.copiedDoubtKey = "";
+        render();
+      }, 1800);
+    } catch {
+      setToast({ message: t("candidates.copyDoubtError"), tone: "warning" });
+    }
     return;
   }
   if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path, state.selectedItem);

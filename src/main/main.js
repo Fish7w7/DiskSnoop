@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
@@ -1215,6 +1215,15 @@ ipcMain.on("path:deletionRisk", (event, targetPath) => {
 });
 
 ipcMain.handle("apps:listInstalled", async () => installedAppsInventory.load());
+
+ipcMain.handle("clipboard:writeText", async (_event, text) => {
+  try {
+    clipboard.writeText(String(text || ""));
+    return ipcOk(true);
+  } catch (error) {
+    return ipcError(error);
+  }
+});
 
 ipcMain.handle("signature:verify", async (_event, filePath) => {
   try {

@@ -171,6 +171,7 @@
     "candidates.copyDoubt": "Copiar dúvida",
     "candidates.copyDoubtDone": "Copiado",
     "candidates.copyDoubtToast": "Texto copiado. Cole em uma IA ou busca para tirar a dúvida.",
+    "candidates.copyDoubtError": "Não foi possível copiar o texto.",
     "candidates.verifySignature": "Verificar assinatura",
     "candidates.verifyingSignature": "Verificando...",
     "signature.valid": "Assinado por: {signer}",

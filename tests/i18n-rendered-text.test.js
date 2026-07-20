@@ -308,6 +308,8 @@ const i18n = global.window.diskSnoopI18n;
   assert.equal(i18n.translate("en-US", "settings.title"), "Settings");
   assert.equal(i18n.translate("pt-BR", "candidates.copyDoubt"), "Copiar dúvida");
   assert.equal(i18n.translate("en-US", "candidates.copyDoubt"), "Copy question");
+  assert.equal(i18n.translate("pt-BR", "candidates.copyDoubtError"), "Não foi possível copiar o texto.");
+  assert.equal(i18n.translate("en-US", "candidates.copyDoubtError"), "Could not copy the text.");
   assert.equal(i18n.translate("en-US", "doubt.path"), "Path");
   assert.equal(i18n.translate("en-US", "candidates.verifySignature"), "Verify signature");
   assert.equal(i18n.translate("en-US", "signature.valid", { signer: "Example Corp" }), "Signed by: Example Corp");
