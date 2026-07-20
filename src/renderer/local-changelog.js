@@ -8,7 +8,7 @@ window.diskSnoopLocalChangelog = {
           items: [
             "Os detalhes de candidatos, duplicados e sobras de apps agora permitem copiar uma dúvida pronta, com caminho, tamanho, data, categoria, motivo e assinatura já consultada.",
             "Arquivos executáveis e bibliotecas compatíveis podem ter a assinatura digital Authenticode verificada sob demanda, sem alterar as regras de segurança ou liberar ações bloqueadas.",
-            "O Histórico ganhou uma linha do tempo visual do espaço liberado em cada scan, com acesso aos relatórios ainda disponíveis."
+            "O Histórico ganhou um gráfico de linhas que compara espaço revisável e espaço realmente liberado em cada scan, mantendo acesso aos relatórios disponíveis."
           ]
         }
       ]
@@ -21,7 +21,7 @@ window.diskSnoopLocalChangelog = {
           items: [
             "Candidate, duplicate, and app-leftover details can now copy a ready-to-use question with path, size, date, category, reason, and any signature result already checked.",
             "Compatible executables and libraries can have their Authenticode digital signature checked on demand without changing safety rules or unlocking blocked actions.",
-            "History now includes a visual timeline of space freed by each scan, with access to reports that are still available."
+            "History now includes a line chart comparing reviewable space with space actually freed by each scan, while keeping access to available reports."
           ]
         }
       ]

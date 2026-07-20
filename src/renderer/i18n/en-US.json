@@ -180,7 +180,12 @@
     "signature.invalid": "Invalid digital signature",
     "signature.unknown": "Could not verify",
     "signature.unknownSigner": "unknown signer",
-    "history.timelineAria": "Timeline of space freed by scan",
+    "history.timelineAria": "Historical chart of reviewable and freed space by scan",
+    "history.chartTitle": "Scan impact",
+    "history.chartSubtitle": "Space found for review versus space actually freed.",
+    "history.latestReviewable": "reviewable in the latest scan",
+    "history.reviewable": "Reviewable",
+    "history.freed": "Freed",
     "common.notAvailable": "-"
   }
 }

@@ -2612,43 +2612,120 @@ function quarantineTab() {
   `;
 }
 
+function smoothHistoryPath(points, valueKey) {
+  if (!points.length) return "";
+  if (points.length === 1) return `M${points[0].x},${points[0][valueKey]}`;
+  let pathData = `M${points[0].x},${points[0][valueKey]}`;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] || points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const afterNext = points[index + 2] || next;
+    const control1X = current.x + (next.x - previous.x) / 6;
+    const control1Y = current[valueKey] + (next[valueKey] - previous[valueKey]) / 6;
+    const control2X = next.x - (afterNext.x - current.x) / 6;
+    const control2Y = next[valueKey] - (afterNext[valueKey] - current[valueKey]) / 6;
+    pathData += ` C${control1X.toFixed(2)},${control1Y.toFixed(2)} ${control2X.toFixed(2)},${control2Y.toFixed(2)} ${next.x},${next[valueKey]}`;
+  }
+  return pathData;
+}
+
 function historyTimeline(scans) {
   if (!scans.length) return "";
   const ordered = [...scans].slice(0, 20).reverse();
-  const values = ordered.map((item) => Number(item.permanentlyDeleted || 0));
+  const safeBytes = (value) => {
+    const numeric = Number(value || 0);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+  };
+  const width = 960;
+  const height = 260;
+  const chartLeft = 72;
+  const chartRight = width - 28;
+  const chartTop = 24;
+  const chartBottom = 210;
+  const values = ordered.flatMap((item) => [
+    safeBytes(item.reviewable),
+    safeBytes(item.permanentlyDeleted)
+  ]);
   const maxValue = Math.max(1, ...values);
-  const minRadius = 5;
-  const maxRadius = 18;
-  const width = 900;
-  const height = 160;
-  const paddingX = 40;
-  const baselineY = height / 2;
-  const step = ordered.length > 1 ? (width - paddingX * 2) / (ordered.length - 1) : 0;
+  const step = ordered.length > 1 ? (chartRight - chartLeft) / (ordered.length - 1) : 0;
+  const yFor = (value) => chartBottom - (Number(value || 0) / maxValue) * (chartBottom - chartTop);
   const points = ordered.map((item, index) => {
-    const x = ordered.length === 1 ? width / 2 : paddingX + step * index;
-    const freed = Number(item.permanentlyDeleted || 0);
-    const radius = freed > 0
-      ? minRadius + Math.sqrt(freed / maxValue) * (maxRadius - minRadius)
-      : minRadius * 0.6;
-    return { x, y: baselineY, radius, item, freed };
+    const reviewable = safeBytes(item.reviewable);
+    const freed = safeBytes(item.permanentlyDeleted);
+    return {
+      x: ordered.length === 1 ? (chartLeft + chartRight) / 2 : chartLeft + step * index,
+      reviewableY: yFor(reviewable),
+      freedY: yFor(freed),
+      reviewable,
+      freed,
+      item
+    };
   });
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+  const reviewablePath = smoothHistoryPath(points, "reviewableY");
+  const freedPath = smoothHistoryPath(points, "freedY");
+  const areaPath = points.length > 1
+    ? `${reviewablePath} L${points.at(-1).x},${chartBottom} L${points[0].x},${chartBottom} Z`
+    : "";
+  const gridSteps = [0, 1 / 3, 2 / 3, 1];
+  const labelInterval = Math.max(1, Math.ceil(ordered.length / 6));
+  const latest = ordered.at(-1);
   return `
     <section class="history-timeline">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("history.timelineAria"))}">
-        <path d="${linePath}" class="history-timeline-line" fill="none" vector-effect="non-scaling-stroke" />
+      <div class="history-chart-header">
+        <div>
+          <span>${escapeHtml(t("history.chartTitle"))}</span>
+          <strong>${compactBytes(latest?.reviewable || 0)}</strong>
+          <small>${escapeHtml(t("history.latestReviewable"))}</small>
+        </div>
+        <div class="history-chart-legend" aria-hidden="true">
+          <span><i class="reviewable"></i>${escapeHtml(t("history.reviewable"))}</span>
+          <span><i class="freed"></i>${escapeHtml(t("history.freed"))}</span>
+        </div>
+      </div>
+      <p class="history-chart-subtitle">${escapeHtml(t("history.chartSubtitle"))}</p>
+      <div class="history-chart-scroll">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("history.timelineAria"))}">
+          <defs>
+            <linearGradient id="history-reviewable-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.2" />
+              <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          ${gridSteps.map((ratio) => {
+            const y = chartBottom - ratio * (chartBottom - chartTop);
+            return `
+              <line x1="${chartLeft}" y1="${y}" x2="${chartRight}" y2="${y}" class="history-chart-grid" />
+              <text x="${chartLeft - 12}" y="${y + 4}" class="history-chart-axis" text-anchor="end">${escapeHtml(compactBytes(maxValue * ratio))}</text>
+            `;
+          }).join("")}
+          ${areaPath ? `<path d="${areaPath}" class="history-chart-area" />` : ""}
+          <path d="${reviewablePath}" class="history-chart-line reviewable" />
+          <path d="${freedPath}" class="history-chart-line freed" />
         ${points.map((point) => {
           const available = point.item.snapshotAvailable !== false;
-          const tooltip = `${fullDate(point.item.date)} — ${compactBytes(point.freed)}`;
+          const tooltip = `${fullDate(point.item.date)} — ${t("history.reviewable")}: ${compactBytes(point.reviewable)} — ${t("history.freed")}: ${compactBytes(point.freed)}`;
+          const index = points.indexOf(point);
+          const showLabel = index === 0 || index === points.length - 1 || index % labelInterval === 0;
+          const hitboxLeft = index === 0 ? chartLeft - Math.max(18, step / 2) : point.x - Math.max(18, step / 2);
+          const hitboxWidth = Math.max(36, step || 72);
+          const pointDate = new Date(point.item.date);
+          const dateLabel = Number.isNaN(pointDate.getTime())
+            ? "-"
+            : new Intl.DateTimeFormat(currentLanguage(), { day: "2-digit", month: "2-digit" }).format(pointDate);
           return `
-            <g class="history-timeline-point ${point.freed > 0 ? "has-impact" : "no-impact"} ${available ? "" : "unavailable"}"
+            <g class="history-timeline-point ${available ? "" : "unavailable"}"
                ${available ? `data-action="load-history-scan" data-id="${escapeHtml(point.item.id)}"` : "aria-disabled=\"true\""}>
               <title>${escapeHtml(tooltip)}</title>
-              <circle cx="${point.x}" cy="${point.y}" r="${point.radius}" />
+              <rect x="${hitboxLeft}" y="${chartTop}" width="${hitboxWidth}" height="${chartBottom - chartTop}" class="history-chart-hitbox" />
+              <circle cx="${point.x}" cy="${point.reviewableY}" r="4" class="history-chart-dot reviewable" />
+              <circle cx="${point.x}" cy="${point.freedY}" r="4" class="history-chart-dot freed" />
+              ${showLabel ? `<text x="${point.x}" y="${height - 16}" class="history-chart-date" text-anchor="middle">${escapeHtml(dateLabel)}</text>` : ""}
             </g>
           `;
         }).join("")}
-      </svg>
+        </svg>
+      </div>
     </section>
   `;
 }

@@ -180,7 +180,12 @@
     "signature.invalid": "Assinatura digital inválida",
     "signature.unknown": "Não foi possível verificar",
     "signature.unknownSigner": "assinante desconhecido",
-    "history.timelineAria": "Linha do tempo do espaço liberado por scan",
+    "history.timelineAria": "Gráfico histórico de espaço revisável e liberado por scan",
+    "history.chartTitle": "Impacto dos scans",
+    "history.chartSubtitle": "Espaço encontrado para revisão versus espaço realmente liberado.",
+    "history.latestReviewable": "revisáveis no scan mais recente",
+    "history.reviewable": "Revisável",
+    "history.freed": "Liberado",
     "common.notAvailable": "-"
   }
 }
