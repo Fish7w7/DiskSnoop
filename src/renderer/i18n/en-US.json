@@ -8,6 +8,7 @@
     "boot.startFailed": "Could not start",
     "boot.initialDataError": "Error loading initial data.",
     "boot.retry": "Try again",
+    "details.close": "Close details",
     "nav.overview": "Overview",
     "nav.folders": "Large Folders",
     "nav.files": "Large Files",

@@ -224,6 +224,8 @@ const i18n = global.window.diskSnoopI18n;
     ["Último scan carregado: nenhum", "Last loaded scan: none"],
     ["Claro", "Light"],
     ["Escuro", "Dark"],
+    ["Sistema", "System"],
+    ["Fechar detalhes", "Close details"],
     ["sim", "yes"],
     ["não", "no"],
     ["Esta ação não pode ser desfeita pelo DiskSnoop.", "This action cannot be undone by DiskSnoop."],

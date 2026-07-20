@@ -487,6 +487,8 @@
       "Maximizar": "Maximize",
       "Claro": "Light",
       "Escuro": "Dark",
+      "Sistema": "System",
+      "Fechar detalhes": "Close details",
       "nenhum": "none",
       "sim": "yes",
       "não": "no",

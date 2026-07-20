@@ -63,6 +63,7 @@ const state = {
   toast: "",
   quarantineUndo: null,
   copiedDoubtKey: "",
+  detailOverlayOpen: false,
   signatureCache: new Map(),
   signatureLoading: new Set(),
   update: {
@@ -109,7 +110,22 @@ const themeLabels = {
   system: "Sistema"
 };
 
-const availableThemes = ["Claro", "Escuro"];
+const themeDisplayLabels = {
+  "pt-BR": themeLabels,
+  "en-US": {
+    light: "Light",
+    dark: "Dark",
+    hacker: "Hacker",
+    neon: "Neon",
+    system: "System"
+  }
+};
+
+function themeDisplayLabel(theme) {
+  return themeDisplayLabels[currentLanguage()]?.[theme] || themeLabels[theme] || themeLabels.light;
+}
+
+const availableThemes = ["Claro", "Escuro", "Hacker", "Neon", "Sistema"];
 const languageOptions = [
   ["Português (Brasil)", "pt-BR"],
   ["English", "en-US"]
@@ -708,7 +724,7 @@ function shellTopRight() {
 }
 
 function appHeader() {
-  const themeText = state.tab === "settings" ? t("top.theme", { theme: themeLabels[state.settings?.theme] || "Claro" }) : "";
+  const themeText = state.tab === "settings" ? t("top.theme", { theme: themeDisplayLabel(state.settings?.theme) }) : "";
   return `
     <header class="app-header">
       <div class="app-brand">
@@ -1969,10 +1985,7 @@ function candidatesTab() {
           </section>
           ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-candidates">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
         </div>
-        <aside class="detail-dock" data-has-selection="${state.selectedItem ? "true" : "false"}">
-          <h2 class="detail-dock-title">Por que apareceu aqui?</h2>
-          ${candidateDetails(state.selectedItem)}
-        </aside>
+        ${detailOverlay("Por que apareceu aqui?", candidateDetails(state.selectedItem), Boolean(state.selectedItem))}
       </section>
     </section>
   `;
@@ -2061,6 +2074,23 @@ function candidateReviewGuidance(item) {
 
 function isProtectedUiPath(itemPath) {
   return protectedPathInfo(itemPath).protected;
+}
+
+function detailOverlay(title, content, hasSelection) {
+  if (!state.detailOverlayOpen || !hasSelection) return "";
+  const closeLabel = t("details.close");
+  return `
+    <div class="detail-overlay" data-detail-overlay="true">
+      <button class="detail-overlay-backdrop" type="button" data-action="close-detail" aria-label="${escapeHtml(closeLabel)}" tabindex="-1"></button>
+      <aside class="detail-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="detail-overlay-title" tabindex="-1">
+        <header class="detail-overlay-header">
+          <h2 id="detail-overlay-title">${escapeHtml(title)}</h2>
+          <button class="detail-overlay-close" type="button" data-action="close-detail" aria-label="${escapeHtml(closeLabel)}" title="${escapeHtml(closeLabel)}">&times;</button>
+        </header>
+        <div class="detail-overlay-body">${content}</div>
+      </aside>
+    </div>
+  `;
 }
 
 function protectedPathInfo(itemPath) {
@@ -2180,10 +2210,7 @@ function duplicatesTab() {
             </table>
           </section>
         </div>
-        <aside class="detail-dock" data-has-selection="${selected ? "true" : "false"}">
-          <h2 class="detail-dock-title">Revisão do grupo</h2>
-          ${duplicateDetails(selected)}
-        </aside>
+        ${detailOverlay("Revisão do grupo", duplicateDetails(selected), Boolean(selected))}
       </section>
     </section>
   `;
@@ -2446,10 +2473,7 @@ function leftoversTab() {
           </section>
           ${items.length > visibleItems.length ? `<button class="secondary load-more" data-action="show-more-leftovers">${icon("list")}Mostrar mais ${Math.min(80, items.length - visibleItems.length)}</button>` : ""}
         </div>
-        <aside class="detail-dock" data-has-selection="${state.selectedItem ? "true" : "false"}">
-          <h2 class="detail-dock-title">Revisão segura</h2>
-          ${leftoverDetails(state.selectedItem)}
-        </aside>
+        ${detailOverlay("Revisão segura", leftoverDetails(state.selectedItem), Boolean(state.selectedItem))}
       </section>
     </section>
   `;
@@ -3157,6 +3181,8 @@ function render() {
     const nextContent = $(".content");
     if (nextContent) nextContent.scrollTop = contentScrollTop;
   }
+  const detailPanel = $(".detail-overlay-panel");
+  if (detailPanel) detailPanel.focus({ preventScroll: true });
   lastRenderedTab = state.screen === "app" ? state.tab : null;
 }
 
@@ -3695,6 +3721,9 @@ function updateSettingsControl(target) {
 function updateSelectField(target) {
   const field = target?.dataset?.field;
   if (!field) return false;
+  if (["candidateScope", "candidateSafety", "candidateConfidence", "candidateAge", "candidateMinSize", "duplicateMinWaste", "leftoversStatus", "leftoversLocation"].includes(field)) {
+    state.detailOverlayOpen = false;
+  }
   if (field === "sizeFilter") state.sizeFilter = Number(target.value || 1);
   if (field === "sort") state.sort = target.value;
   if (field === "fileSizeFilter") state.fileSizeFilter = Number(target.value || 500 * MB);
@@ -3864,6 +3893,7 @@ document.addEventListener("click", async (event) => {
   if (action === "tab") {
     state.tab = target.dataset.tab;
     state.selectedItem = null;
+    state.detailOverlayOpen = false;
     if (state.tab === "quarantine") {
       await refreshData();
     }
@@ -3925,6 +3955,7 @@ document.addEventListener("click", async (event) => {
   if (action === "select-overview-candidate") {
     state.selectedItem = findCandidate(id);
     state.tab = "candidates";
+    state.detailOverlayOpen = true;
     render();
   }
   if (action === "settings-section") {
@@ -3949,14 +3980,21 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "select-candidate") {
     state.selectedItem = findCandidate(id);
+    state.detailOverlayOpen = true;
     render();
   }
   if (action === "select-duplicate") {
     state.selectedDuplicateId = id;
+    state.detailOverlayOpen = true;
     render();
   }
   if (action === "select-leftover") {
     state.selectedItem = findFolder(id);
+    state.detailOverlayOpen = true;
+    render();
+  }
+  if (action === "close-detail") {
+    state.detailOverlayOpen = false;
     render();
   }
   if (action === "toggle-select") {
@@ -4323,13 +4361,47 @@ document.addEventListener("input", (event) => {
   if (field === "candidateSearch") {
     state.candidateSearch = event.target.value;
     state.candidateLimit = 80;
+    state.detailOverlayOpen = false;
   }
-  if (field === "duplicateSearch") state.duplicateSearch = event.target.value;
+  if (field === "duplicateSearch") {
+    state.duplicateSearch = event.target.value;
+    state.detailOverlayOpen = false;
+  }
   if (field === "leftoversSearch") {
     state.leftoversSearch = event.target.value;
     state.leftoversLimit = 80;
+    state.detailOverlayOpen = false;
   }
   render();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!state.detailOverlayOpen) return;
+  if (event.key === "Escape") {
+    state.detailOverlayOpen = false;
+    render();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const panel = $(".detail-overlay-panel");
+  const focusable = [...(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])') || [])];
+  if (!focusable.length) {
+    event.preventDefault();
+    panel?.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (document.activeElement === panel) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 
 document.addEventListener("change", async (event) => {
