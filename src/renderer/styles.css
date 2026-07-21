@@ -56,39 +56,39 @@
   color-scheme: dark;
 }
 
-:root[data-theme="hacker"] {
-  --background: #020604;
-  --surface: #07100b;
-  --surfaceHover: #0d1d12;
-  --surfaceSubtle: #040b07;
-  --textPrimary: #ddffe8;
-  --textMuted: #89aa93;
-  --accent: #27e66e;
-  --accentSoft: #0a2815;
-  --folder: #d0f25b;
-  --danger: #ff6574;
-  --warning: #f6c344;
-  --success: #27e66e;
-  --border: #1b3b26;
-  --shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
-  color-scheme: dark;
+:root[data-theme="paper"] {
+  --background: #f4ecdc;
+  --surface: #fbf5e9;
+  --surfaceHover: #efe3cc;
+  --surfaceSubtle: #f9f2e3;
+  --textPrimary: #3a2e1f;
+  --textMuted: #7a6a51;
+  --accent: #a8622c;
+  --accentSoft: #f0dcc4;
+  --folder: #c99a3d;
+  --danger: #b8452f;
+  --warning: #c48a1e;
+  --success: #4f7a45;
+  --border: #e3d3b4;
+  --shadow: 0 8px 24px rgba(90, 65, 30, 0.08);
+  color-scheme: light;
 }
 
-:root[data-theme="neon"] {
-  --background: #090814;
-  --surface: #141224;
-  --surfaceHover: #201c35;
-  --surfaceSubtle: #0f0d1c;
-  --textPrimary: #f4f2ff;
-  --textMuted: #aaa6c5;
-  --accent: #1aa7ff;
-  --accentSoft: #10233f;
-  --folder: #ffbd38;
-  --danger: #ff5c8a;
-  --warning: #ffbd38;
-  --success: #3ce6a0;
-  --border: #302b4a;
-  --shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
+:root[data-theme="graphite"] {
+  --background: #17181a;
+  --surface: #202225;
+  --surfaceHover: #2a2c30;
+  --surfaceSubtle: #1c1e21;
+  --textPrimary: #eceef0;
+  --textMuted: #9a9da3;
+  --accent: #d6d9de;
+  --accentSoft: #35373b;
+  --folder: #c9a24a;
+  --danger: #e0555e;
+  --warning: #d6a53a;
+  --success: #4fae72;
+  --border: #303237;
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -2965,13 +2965,13 @@ input[type="checkbox"] {
 [data-theme-preview="dark"] .swatch-surface { background: #0d1117; }
 [data-theme-preview="dark"] .swatch-accent { background: #2f80ff; }
 
-[data-theme-preview="hacker"] .swatch-bg { background: #020604; }
-[data-theme-preview="hacker"] .swatch-surface { background: #07100b; }
-[data-theme-preview="hacker"] .swatch-accent { background: #27e66e; }
+[data-theme-preview="paper"] .swatch-bg { background: #f4ecdc; }
+[data-theme-preview="paper"] .swatch-surface { background: #fbf5e9; }
+[data-theme-preview="paper"] .swatch-accent { background: #a8622c; }
 
-[data-theme-preview="neon"] .swatch-bg { background: #090814; }
-[data-theme-preview="neon"] .swatch-surface { background: #141224; }
-[data-theme-preview="neon"] .swatch-accent { background: #1aa7ff; }
+[data-theme-preview="graphite"] .swatch-bg { background: #17181a; }
+[data-theme-preview="graphite"] .swatch-surface { background: #202225; }
+[data-theme-preview="graphite"] .swatch-accent { background: #d6d9de; }
 
 @media (prefers-color-scheme: dark) {
   [data-theme-preview="system"] .swatch-bg { background: #0e1117; }
@@ -4423,15 +4423,18 @@ input[type="checkbox"] {
   width: max-content;
 }
 
-:root[data-theme="dark"] .app-header {
+:root[data-theme="dark"] .app-header,
+:root[data-theme="graphite"] .app-header {
   background: color-mix(in srgb, var(--background) 82%, var(--surface));
 }
 
-:root[data-theme="dark"] .sidebar {
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="graphite"] .sidebar {
   background: color-mix(in srgb, var(--background) 88%, var(--surface));
 }
 
-:root[data-theme="dark"] .content {
+:root[data-theme="dark"] .content,
+:root[data-theme="graphite"] .content {
   background:
     radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 32%),
     var(--background);
@@ -4446,17 +4449,31 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .settings-card,
 :root[data-theme="dark"] .content-preview,
 :root[data-theme="dark"] .app-modal,
-:root[data-theme="dark"] .toast {
+:root[data-theme="dark"] .toast,
+:root[data-theme="graphite"] .panel,
+:root[data-theme="graphite"] .drive-card,
+:root[data-theme="graphite"] .metric-card,
+:root[data-theme="graphite"] .scan-card,
+:root[data-theme="graphite"] .safe-note,
+:root[data-theme="graphite"] .welcome-feature-card,
+:root[data-theme="graphite"] .settings-card,
+:root[data-theme="graphite"] .content-preview,
+:root[data-theme="graphite"] .app-modal,
+:root[data-theme="graphite"] .toast {
   background: color-mix(in srgb, var(--surface) 92%, var(--background));
 }
 
 :root[data-theme="dark"] input,
 :root[data-theme="dark"] select,
-:root[data-theme="dark"] textarea {
+:root[data-theme="dark"] textarea,
+:root[data-theme="graphite"] input,
+:root[data-theme="graphite"] select,
+:root[data-theme="graphite"] textarea {
   background: color-mix(in srgb, var(--surface) 86%, var(--background));
 }
 
-:root[data-theme="dark"] option {
+:root[data-theme="dark"] option,
+:root[data-theme="graphite"] option {
   background: var(--surface);
   color: var(--textPrimary);
 }
@@ -4464,23 +4481,34 @@ input[type="checkbox"] {
 :root[data-theme="dark"] button.secondary,
 :root[data-theme="dark"] button.outline-primary,
 :root[data-theme="dark"] button.table-action,
-:root[data-theme="dark"] button.quick-action {
+:root[data-theme="dark"] button.quick-action,
+:root[data-theme="graphite"] button.secondary,
+:root[data-theme="graphite"] button.outline-primary,
+:root[data-theme="graphite"] button.table-action,
+:root[data-theme="graphite"] button.quick-action {
   background: color-mix(in srgb, var(--surface) 88%, var(--background));
 }
 
 :root[data-theme="dark"] button:hover,
 :root[data-theme="dark"] .quick-action:hover,
-:root[data-theme="dark"] .table-action:hover {
+:root[data-theme="dark"] .table-action:hover,
+:root[data-theme="graphite"] button:hover,
+:root[data-theme="graphite"] .quick-action:hover,
+:root[data-theme="graphite"] .table-action:hover {
   background: var(--surfaceHover);
 }
 
 :root[data-theme="dark"] tbody tr:hover,
-:root[data-theme="dark"] tbody tr.selected {
+:root[data-theme="dark"] tbody tr.selected,
+:root[data-theme="graphite"] tbody tr:hover,
+:root[data-theme="graphite"] tbody tr.selected {
   background: color-mix(in srgb, var(--accentSoft) 58%, transparent);
 }
 
 :root[data-theme="dark"] .app-modal footer,
-:root[data-theme="dark"] .content-preview header {
+:root[data-theme="dark"] .content-preview header,
+:root[data-theme="graphite"] .app-modal footer,
+:root[data-theme="graphite"] .content-preview header {
   background: color-mix(in srgb, var(--surfaceSubtle) 62%, var(--surface));
 }
 
@@ -4488,15 +4516,22 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .selection-summary,
 :root[data-theme="dark"] .leftover-summary span,
 :root[data-theme="dark"] .settings-stats span,
-:root[data-theme="dark"] .content-summary {
+:root[data-theme="dark"] .content-summary,
+:root[data-theme="graphite"] .path-row,
+:root[data-theme="graphite"] .selection-summary,
+:root[data-theme="graphite"] .leftover-summary span,
+:root[data-theme="graphite"] .settings-stats span,
+:root[data-theme="graphite"] .content-summary {
   background: color-mix(in srgb, var(--surface) 78%, var(--background));
 }
 
-:root[data-theme="dark"] .window-controls button:hover {
+:root[data-theme="dark"] .window-controls button:hover,
+:root[data-theme="graphite"] .window-controls button:hover {
   background: color-mix(in srgb, var(--surfaceHover) 82%, var(--background));
 }
 
-:root[data-theme="dark"] .window-controls button.btn-close:hover {
+:root[data-theme="dark"] .window-controls button.btn-close:hover,
+:root[data-theme="graphite"] .window-controls button.btn-close:hover {
   background: #e81123;
   color: #ffffff;
 }

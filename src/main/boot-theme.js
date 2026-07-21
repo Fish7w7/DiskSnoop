@@ -1,16 +1,22 @@
 const BOOT_BACKGROUND_BY_THEME = Object.freeze({
   light: "#fbfcfe",
   dark: "#05070a",
-  hacker: "#020604",
-  neon: "#090814",
+  paper: "#f4ecdc",
+  graphite: "#17181a",
   systemDark: "#0e1117"
 });
 
-const BOOT_THEME_PREFERENCES = new Set(["light", "dark", "hacker", "neon", "system"]);
+const LEGACY_THEME_MAP = Object.freeze({
+  black: "dark",
+  hacker: "graphite",
+  neon: "graphite"
+});
+const BOOT_THEME_PREFERENCES = new Set(["light", "dark", "paper", "graphite", "system"]);
 
 function resolveBootThemePreference(themePreference) {
   const theme = String(themePreference || "").toLowerCase();
-  return BOOT_THEME_PREFERENCES.has(theme) ? theme : "system";
+  if (BOOT_THEME_PREFERENCES.has(theme)) return theme;
+  return LEGACY_THEME_MAP[theme] || "dark";
 }
 
 function resolveBootBackground(themePreference, shouldUseDarkColors = false) {
@@ -24,6 +30,7 @@ function resolveBootBackground(themePreference, shouldUseDarkColors = false) {
 
 module.exports = {
   BOOT_BACKGROUND_BY_THEME,
+  LEGACY_THEME_MAP,
   resolveBootThemePreference,
   resolveBootBackground
 };

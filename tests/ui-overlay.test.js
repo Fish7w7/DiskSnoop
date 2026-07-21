@@ -5,6 +5,8 @@ const path = require("node:path");
 
 const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
 const renderer = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "renderer.js"), "utf8");
+const ptBR = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "i18n", "pt-BR.json"), "utf8"));
+const enUS = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "i18n", "en-US.json"), "utf8"));
 
 test("backdrop preserva transparência em hover, foco e clique", () => {
   assert.match(css, /:root \.detail-overlay button\.detail-overlay-backdrop:is\(:hover, :focus, :active\)\s*\{[\s\S]*?background:\s*color-mix\(in srgb, var\(--background\) 54%, transparent\);/);
@@ -48,11 +50,37 @@ test("refiltros mostram skeleton sem misturar placeholders e dados", () => {
 test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
   assert.match(renderer, /function themeCardPicker\(currentTheme\)/);
   assert.doesNotMatch(renderer, /selectControl\("theme"/);
-  for (const theme of ["light", "dark", "hacker", "neon", "system"]) {
+  for (const theme of ["light", "dark", "paper", "graphite", "system"]) {
     assert.match(css, new RegExp(`\\[data-theme-preview="${theme}"\\] \\.swatch-bg`));
   }
+  assert.deepEqual(
+    ["theme.light", "theme.dark", "theme.paper", "theme.graphite", "theme.system"].map((key) => ptBR.messages[key]),
+    ["Claro", "Escuro", "Papel", "Grafite", "Sistema"]
+  );
+  assert.deepEqual(
+    ["theme.light", "theme.dark", "theme.paper", "theme.graphite", "theme.system"].map((key) => enUS.messages[key]),
+    ["Light", "Dark", "Paper", "Graphite", "System"]
+  );
   assert.match(renderer, /if \(action === "select-theme"\)[\s\S]*?state\.settings\.theme = theme;[\s\S]*?render\(\);[\s\S]*?persistSettingsSoon\(\);/);
   assert.match(css, /\.theme-picker\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill, minmax\(120px, 1fr\)\);/);
+  assert.doesNotMatch(css, /data-theme="(?:hacker|neon)"|data-theme-preview="(?:hacker|neon)"/);
+  assert.doesNotMatch(JSON.stringify(ptBR.messages) + JSON.stringify(enUS.messages), /Hacker|Neon/);
+});
+
+test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
+  const finishStart = css.indexOf(':root[data-theme="dark"] .app-header');
+  const finishEnd = css.indexOf("@media (max-width: 1100px)", finishStart);
+  const darkFinish = css.slice(finishStart, finishEnd);
+  assert.ok(finishStart >= 0 && finishEnd > finishStart);
+  assert.doesNotMatch(darkFinish, /data-theme="paper"/);
+  for (const selector of [
+    ".app-header", ".sidebar", ".content", ".panel", "input", "option",
+    "button.secondary", "tbody tr:hover", ".app-modal footer", ".path-row",
+    ".window-controls button:hover", ".window-controls button.btn-close:hover"
+  ]) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(darkFinish, new RegExp(`:root\\[data-theme="graphite"\\] ${escaped}`));
+  }
 });
 
 test("transição de aba só dispara quando a aba realmente muda", () => {

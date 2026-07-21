@@ -106,27 +106,22 @@ const tabs = [
   ["settings", "nav.settings", "settings"]
 ];
 
-const themeLabels = {
-  light: "Claro",
-  dark: "Escuro",
-  hacker: "Hacker",
-  neon: "Neon",
-  system: "Sistema"
+const themeMessageKeys = {
+  light: "theme.light",
+  dark: "theme.dark",
+  paper: "theme.paper",
+  graphite: "theme.graphite",
+  system: "theme.system"
 };
 
-const themeDisplayLabels = {
-  "pt-BR": themeLabels,
-  "en-US": {
-    light: "Light",
-    dark: "Dark",
-    hacker: "Hacker",
-    neon: "Neon",
-    system: "System"
-  }
+const legacyThemeMap = {
+  black: "dark",
+  hacker: "graphite",
+  neon: "graphite"
 };
 
 function themeDisplayLabel(theme) {
-  return themeDisplayLabels[currentLanguage()]?.[theme] || themeLabels[theme] || themeLabels.light;
+  return t(themeMessageKeys[theme] || themeMessageKeys.dark);
 }
 
 const languageOptions = [
@@ -137,8 +132,10 @@ const languageLabels = Object.fromEntries(languageOptions.map(([label, value]) =
 
 function normalizeTheme(settings) {
   const normalized = { ...(settings || {}) };
-  if (normalized.theme === "black") normalized.theme = "dark";
-  if (!themeLabels[normalized.theme]) normalized.theme = "light";
+  const requestedTheme = String(normalized.theme || "").toLowerCase();
+  normalized.theme = themeMessageKeys[requestedTheme]
+    ? requestedTheme
+    : legacyThemeMap[requestedTheme] || "dark";
   if (!languageLabels[normalized.language]) normalized.language = "pt-BR";
   normalized.ignoredPaths = Array.isArray(normalized.ignoredPaths) ? normalized.ignoredPaths : [];
   normalized.includedPaths = Array.isArray(normalized.includedPaths) ? normalized.includedPaths : [];
@@ -592,7 +589,7 @@ function normalizeMediaType(type) {
 }
 
 function applyTheme() {
-  const preference = themeLabels[state.settings?.theme] ? state.settings.theme : "light";
+  const preference = themeMessageKeys[state.settings?.theme] ? state.settings.theme : "dark";
   const theme = preference === "system" ? "system" : preference;
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("disksnoop-theme", theme); } catch {}
@@ -2207,7 +2204,7 @@ function isProtectedUiPath(itemPath) {
 }
 
 function themeCardPicker(currentTheme) {
-  const themes = ["light", "dark", "hacker", "neon", "system"];
+  const themes = ["light", "dark", "paper", "graphite", "system"];
   return `
     <div class="theme-picker">
       ${themes.map((value) => `
@@ -3922,11 +3919,6 @@ function updateSelectField(target) {
     state.leftoversLocation = target.value;
     state.leftoversLimit = 80;
   }
-  if (field === "theme") {
-    state.settings.theme = Object.entries(themeLabels).find(([, label]) => label === target.value)?.[0] || "light";
-    state.settings = normalizeTheme(state.settings);
-    persistSettingsSoon();
-  }
   if (field === "language") {
     state.settings.language = languageLabels[target.value] ? target.value : "pt-BR";
     state.settings = normalizeTheme(state.settings);
@@ -4137,7 +4129,7 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "select-theme") {
     const theme = target.dataset.value;
-    if (!themeLabels[theme]) return;
+    if (!themeMessageKeys[theme]) return;
     state.settings.theme = theme;
     state.settings = normalizeTheme(state.settings);
     render();

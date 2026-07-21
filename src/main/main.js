@@ -133,10 +133,11 @@ async function getSettings() {
   const saved = await readJson("settings.json", {});
   const savedUpdate = saved.update || {};
   const shouldMigrateAutoDownload = saved.settingsVersion !== 2 && savedUpdate.autoDownload === false;
-  return {
+  const settings = {
     ...defaultSettings,
     ...saved,
     settingsVersion: defaultSettings.settingsVersion,
+    theme: resolveBootThemePreference(saved.theme ?? defaultSettings.theme),
     language: ["pt-BR", "en-US"].includes(saved.language) ? saved.language : defaultSettings.language,
     ignoredPaths: Array.isArray(saved.ignoredPaths) ? saved.ignoredPaths : defaultSettings.ignoredPaths,
     includedPaths: Array.isArray(saved.includedPaths) ? saved.includedPaths : defaultSettings.includedPaths,
@@ -150,6 +151,8 @@ async function getSettings() {
           : defaultSettings.update.autoDownload
     }
   };
+  if (saved.theme && saved.theme !== settings.theme) await writeJson("settings.json", settings);
+  return settings;
 }
 
 function runPowerShell(script, options = {}) {
@@ -1023,8 +1026,8 @@ async function installDownloadedUpdate() {
 }
 
 async function createWindow() {
-  const savedSettings = await readJson("settings.json", null);
-  const bootTheme = resolveBootThemePreference(savedSettings?.theme);
+  const savedSettings = await getSettings();
+  const bootTheme = resolveBootThemePreference(savedSettings.theme);
   const bootBackground = resolveBootBackground(bootTheme, nativeTheme.shouldUseDarkColors);
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -1080,6 +1083,7 @@ ipcMain.handle("settings:save", async (_event, nextSettings) => {
   const settings = {
     ...current,
     ...nextSettings,
+    theme: resolveBootThemePreference(nextSettings?.theme ?? current.theme),
     update: {
       ...current.update,
       ...(nextSettings?.update || {})

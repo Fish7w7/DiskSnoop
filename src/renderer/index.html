@@ -8,10 +8,20 @@
       try {
         const bootTheme = new URLSearchParams(location.search).get("bootTheme");
         const savedTheme = localStorage.getItem("disksnoop-theme");
-        const supportedThemes = ["light", "dark", "hacker", "neon", "system"];
-        document.documentElement.dataset.theme = supportedThemes.includes(bootTheme)
-          ? bootTheme
-          : supportedThemes.includes(savedTheme) ? savedTheme : "system";
+        const legacyThemes = { hacker: "graphite", neon: "graphite" };
+        const supportedThemes = ["light", "dark", "paper", "graphite", "system"];
+        const normalizeTheme = (value) => {
+          const theme = String(value || "").toLowerCase();
+          if (supportedThemes.includes(theme)) return theme;
+          return legacyThemes[theme] || "dark";
+        };
+        const normalizedSavedTheme = normalizeTheme(savedTheme);
+        document.documentElement.dataset.theme = bootTheme
+          ? normalizeTheme(bootTheme)
+          : normalizedSavedTheme;
+        if (savedTheme && savedTheme !== normalizedSavedTheme) {
+          localStorage.setItem("disksnoop-theme", normalizedSavedTheme);
+        }
         const language = localStorage.getItem("disksnoop-language");
         if (language) document.documentElement.lang = language;
       } catch {}

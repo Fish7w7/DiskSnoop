@@ -30,7 +30,7 @@ O DiskSnoop analisa seus discos, classifica pastas e arquivos por tamanho, expli
 ## Recursos
 
 **✨ Interface e revisão**
-Cinco temas — Claro, Escuro, Hacker, Neon e Sistema — com inicialização já na cor correta. Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps abrem detalhes sob demanda em um painel sobreposto, deixando a lista inteira disponível quando ele está fechado.
+Cinco temas — Claro, Escuro, Papel, Grafite e Sistema — com inicialização já na cor correta. Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps abrem detalhes sob demanda em um painel sobreposto, deixando a lista inteira disponível quando ele está fechado.
 
 **🔍 Análise de disco**
 Scanner em processo separado com progresso, pausa e cancelamento. Ranking das maiores pastas, aba de arquivos grandes e relatório com duração, contagens e itens sem acesso.
