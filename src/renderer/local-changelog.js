@@ -1,4 +1,32 @@
 window.diskSnoopLocalChangelog = {
+  "1.9.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.9.0",
+      sections: [
+        {
+          title: "Notificações e interface",
+          items: [
+            "Scans concluídos em segundo plano agora exibem um badge no ícone da barra de tarefas até o DiskSnoop voltar ao foco.",
+            "A tela de Atualização foi reorganizada para destacar o estado e os dados da versão, mantendo os diagnósticos técnicos recolhidos por padrão.",
+            "A abertura da janela ganhou uma transição curta de fade e escala, desativada quando o sistema pede movimento reduzido."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.9.0",
+      sections: [
+        {
+          title: "Notifications and interface",
+          items: [
+            "Scans completed in the background now show a badge on the taskbar icon until DiskSnoop regains focus.",
+            "The Update screen was reorganized to highlight status and version information, with technical diagnostics collapsed by default.",
+            "Window opening now uses a short fade-and-scale transition, disabled when the system requests reduced motion."
+          ]
+        }
+      ]
+    }
+  },
   "1.8.0": {
     "pt-BR": {
       title: "DiskSnoop 1.8.0",

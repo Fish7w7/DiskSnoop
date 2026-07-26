@@ -1,6 +1,6 @@
 {
   "name": "disksnoop",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Investigador visual de armazenamento para Windows.",
   "main": "src/main/main.js",
   "author": "DiskSnoop contributors",

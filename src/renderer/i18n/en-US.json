@@ -1,7 +1,7 @@
 {
   "languageName": "English",
   "appName": "DiskSnoop",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "messages": {
     "common.undo": "Undo",
     "boot.loadingApp": "Preparing DiskSnoop...",
