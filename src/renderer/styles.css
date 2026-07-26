@@ -200,26 +200,6 @@ body {
   user-select: none;
 }
 
-#app {
-  opacity: 1;
-  transform: none;
-}
-
-#app.window-enter {
-  animation: window-enter 280ms ease-out 80ms both;
-}
-
-@keyframes window-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 body,
 .app-header,
 .sidebar,
@@ -245,12 +225,6 @@ body,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #app {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-
   body,
   .app-header,
   .sidebar,
@@ -261,6 +235,10 @@ body,
   }
 
   .tab-enter {
+    animation: none;
+  }
+
+  .boot-card.boot-card-enter {
     animation: none;
   }
 }
@@ -344,7 +322,10 @@ select,
     var(--shadow);
   padding: 38px 32px 32px;
   text-align: center;
-  animation: boot-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.boot-card.boot-card-enter {
+  animation: boot-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
 }
 
 @keyframes boot-rise {

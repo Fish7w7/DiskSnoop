@@ -55,6 +55,7 @@ test("usa o tema do sistema quando explícito e dark como fallback seguro", () =
   assert.match(html, /legacyThemes = \{ hacker: "graphite", neon: "graphite" \}/);
   assert.match(html, /supportedThemes = \["light", "dark", "paper", "graphite", "system"\]/);
   assert.match(html, /localStorage\.setItem\("disksnoop-theme", normalizedSavedTheme\)/);
+  assert.match(html, /dataset\.theme = savedTheme[\s\S]*?\? normalizedSavedTheme[\s\S]*?: bootTheme/);
 
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
   assert.match(main, /loadFile\(paths\.renderer,\s*\{\s*query:\s*\{\s*bootTheme\s*\}\s*\}\)/);
@@ -66,11 +67,16 @@ test("usa o tema do sistema quando explícito e dark como fallback seguro", () =
 test("anima o conteúdo na abertura sem substituir a proteção contra flash", () => {
   const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
-  assert.match(css, /#app\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*none;/);
-  assert.match(css, /#app\.window-enter\s*\{\s*animation:\s*window-enter 280ms ease-out 80ms both;/);
-  assert.match(css, /@keyframes window-enter\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?transform:\s*translateY\(6px\) scale\(0\.96\);[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*scale\(1\);/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?#app\s*\{\s*animation:\s*none;/);
-  assert.match(main, /mainWindow\.once\("ready-to-show",\s*async \(\) => \{[\s\S]*?executeJavaScript\([\s\S]*?classList\.add\("window-enter"\)[\s\S]*?mainWindow\.show\(\);/);
-  assert.doesNotMatch(main, /webContents\.send\("window:shown"\)/);
+  assert.doesNotMatch(css, /#app\.window-enter|@keyframes window-enter/);
+  assert.match(css, /\.boot-card\.boot-card-enter\s*\{\s*animation:\s*boot-rise 420ms cubic-bezier\(0\.22, 1, 0\.36, 1\) 120ms both;/);
+  assert.match(css, /@keyframes boot-rise\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?scale\(0\.97\);[\s\S]*?opacity:\s*1;[\s\S]*?scale\(1\);/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.boot-card\.boot-card-enter\s*\{\s*animation:\s*none;/);
+  assert.match(main, /webContents\.on\("did-finish-load"[\s\S]*?classList\.remove\("boot-card-enter"\)[\s\S]*?offsetWidth[\s\S]*?classList\.add\("boot-card-enter"\)/);
+  assert.match(main, /mainWindow\.once\("ready-to-show",\s*\(\) => \{[\s\S]*?mainWindow\.show\(\);/);
   assert.match(main, /backgroundColor:\s*bootBackground/);
+});
+
+test("salvar o tema atualiza também o fundo nativo da janela", () => {
+  const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
+  assert.match(main, /ipcMain\.handle\("settings:save"[\s\S]*?setBackgroundColor\(resolveBootBackground\(saved\.theme, nativeTheme\.shouldUseDarkColors\)\)/);
 });

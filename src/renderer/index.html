@@ -16,9 +16,11 @@
           return legacyThemes[theme] || "dark";
         };
         const normalizedSavedTheme = normalizeTheme(savedTheme);
-        document.documentElement.dataset.theme = bootTheme
-          ? normalizeTheme(bootTheme)
-          : normalizedSavedTheme;
+        document.documentElement.dataset.theme = savedTheme
+          ? normalizedSavedTheme
+          : bootTheme
+            ? normalizeTheme(bootTheme)
+            : normalizedSavedTheme;
         if (savedTheme && savedTheme !== normalizedSavedTheme) {
           localStorage.setItem("disksnoop-theme", normalizedSavedTheme);
         }

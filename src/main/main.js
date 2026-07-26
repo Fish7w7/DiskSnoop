@@ -1072,14 +1072,19 @@ async function createWindow() {
   mainWindow.on("focus", () => {
     taskbarBadge.clear(mainWindow);
   });
-  mainWindow.once("ready-to-show", async () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    try {
-      await mainWindow.webContents.executeJavaScript(
-        'document.getElementById("app")?.classList.add("window-enter")'
-      );
-    } catch {}
-    if (!mainWindow.isDestroyed()) mainWindow.show();
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow?.webContents.executeJavaScript(`
+      (() => {
+        const card = document.querySelector(".boot-card");
+        if (!card) return;
+        card.classList.remove("boot-card-enter");
+        void card.offsetWidth;
+        card.classList.add("boot-card-enter");
+      })()
+    `).catch(() => {});
+  });
+  mainWindow.once("ready-to-show", () => {
+    if (!mainWindow?.isDestroyed()) mainWindow.show();
   });
 
   await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
@@ -1127,9 +1132,19 @@ ipcMain.handle("settings:save", async (_event, nextSettings) => {
       ...(nextSettings?.update || {})
     }
   };
-  return writeJson("settings.json", settings);
+  const saved = await writeJson("settings.json", settings);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(resolveBootBackground(saved.theme, nativeTheme.shouldUseDarkColors));
+  }
+  return saved;
 });
-ipcMain.handle("settings:reset", async () => writeJson("settings.json", defaultSettings));
+ipcMain.handle("settings:reset", async () => {
+  const saved = await writeJson("settings.json", defaultSettings);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(resolveBootBackground(saved.theme, nativeTheme.shouldUseDarkColors));
+  }
+  return saved;
+});
 ipcMain.handle("history:list", async () => {
   const [history, snapshots] = await Promise.all([
     readJson("history.json", []),
