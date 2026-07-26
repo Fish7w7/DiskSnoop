@@ -159,6 +159,10 @@
   display: none;
 }
 
+.reset-accent-button {
+  align-self: flex-start;
+}
+
 * {
   box-sizing: border-box;
 }

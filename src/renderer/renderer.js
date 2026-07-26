@@ -2270,6 +2270,11 @@ function accentPicker(currentAccent) {
     </div>
     <div class="accent-preview" data-accent-preview></div>
     <div class="accent-warnings" data-accent-warnings></div>
+    ${currentAccent ? `
+      <button class="secondary reset-accent-button" data-action="reset-accent" type="button">
+        ${icon("reset")}${escapeHtml(t("settings.resetAccent"))}
+      </button>
+    ` : ""}
   `;
 }
 
@@ -4198,6 +4203,17 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "select-accent") {
     selectAccent(target.dataset.value);
+    return;
+  }
+  if (action === "reset-accent") {
+    state.settings.appearance = {
+      ...(state.settings.appearance || {}),
+      customAccent: null
+    };
+    applyCustomAccent(null);
+    persistSettingsSoon();
+    render();
+    return;
   }
   if (action === "overview-safe-plan") {
     const safePlan = visibleCandidates().filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");

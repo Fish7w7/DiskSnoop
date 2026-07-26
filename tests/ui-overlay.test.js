@@ -76,6 +76,17 @@ test("accent customizado aplica em tempo real e persiste separado do tema", () =
   assert.equal(enUS.messages["settings.accentCustom"], "Custom");
 });
 
+test("restaurar accent remove apenas a cor customizada e preserva o tema", () => {
+  assert.match(renderer, /currentAccent \? `[\s\S]*?data-action="reset-accent"[\s\S]*?` : ""/);
+  assert.match(renderer, /if \(action === "reset-accent"\) \{[\s\S]*?customAccent: null[\s\S]*?applyCustomAccent\(null\);[\s\S]*?persistSettingsSoon\(\);/);
+  assert.doesNotMatch(
+    renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "",
+    /settings\.theme\s*=/
+  );
+  assert.equal(ptBR.messages["settings.resetAccent"], "Restaurar aparência padrão");
+  assert.equal(enUS.messages["settings.resetAccent"], "Restore default appearance");
+});
+
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
   const finishStart = css.indexOf(':root[data-theme="dark"] .app-header');
   const finishEnd = css.indexOf("@media (max-width: 1100px)", finishStart);
