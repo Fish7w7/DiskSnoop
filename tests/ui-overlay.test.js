@@ -214,3 +214,30 @@ test("barra de scan aplica shimmer somente no preenchimento e respeita movimento
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.scan-card \.progress-fill::after\s*\{[\s\S]*?animation:\s*none;/);
   assert.equal((css.match(/\.scan-card \.progress-fill::after/g) || []).length, 2);
 });
+
+test("aba Atualização separa versão e detalhes técnicos sem perder informações", () => {
+  assert.match(renderer, /class="settings-card vertical update-card update-version-details"/);
+  for (const key of [
+    "updates.installedVersion",
+    "updates.latestVersion",
+    "updates.lastCheck",
+    "updates.channel",
+    "updates.mode",
+    "updates.artifact"
+  ]) {
+    assert.match(renderer, new RegExp(`t\\("${key.replace(".", "\\.")}"\\)`));
+  }
+  assert.doesNotMatch(renderer, /class="update-status-grid"/);
+  assert.match(renderer, /<details class="settings-card update-card update-technical-details">/);
+  assert.match(renderer, /<summary>\$\{escapeHtml\(t\("updates\.technicalDetails"\)\)\}<\/summary>/);
+  assert.doesNotMatch(renderer, /<details class="settings-card update-card update-technical-details" open>/);
+  for (const key of ["updates.appMode", "updates.engine", "updates.expectedRelease", "updates.localData"]) {
+    assert.match(renderer, new RegExp(`t\\("${key.replace(".", "\\.")}"\\)`));
+  }
+  assert.match(renderer, /data-action="open-data-folder"/);
+  assert.match(css, /details\.settings-card summary\s*\{[\s\S]*?cursor:\s*pointer;/);
+  assert.equal(ptBR.messages["updates.versionDetails"], "Detalhes da versão");
+  assert.equal(enUS.messages["updates.versionDetails"], "Version details");
+  assert.equal(ptBR.messages["updates.technicalDetails"], "Detalhes técnicos");
+  assert.equal(enUS.messages["updates.technicalDetails"], "Technical details");
+});

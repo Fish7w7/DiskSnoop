@@ -3161,61 +3161,42 @@ function updatesTabV1() {
   const isAssisted = !isAutoUpdate || settings.preferManual;
   const canDownloadUpdate = isAutoUpdate || hasAsset;
   const buildMode = update.buildMode || state.appPaths?.buildMode || "Desconhecido";
-  const isDevelopmentBuild = buildMode === "Desenvolvimento" || buildMode === "Development";
   const dataLocation = state.appPaths?.userData || "Pasta de dados do DiskSnoop";
   const modeLabel = isAutoUpdate
     ? t("updates.autoMode")
     : buildMode === "Instalado" && settings.preferManual
       ? t("updates.manualPreferenceMode")
       : t("updates.assistedMode");
-  const updateEngine = isDevelopmentBuild
-    ? (isAutoUpdate
-      ? t("updates.engineActive")
-      : buildMode === "Instalado" && settings.preferManual
-        ? t("updates.engineManualPreference")
-        : buildMode === "Instalado" && update.autoUpdaterAvailable === false
-          ? t("updates.engineMissing")
-          : t("updates.engineAssisted"))
-    : "";
-  const releaseRequirement = isDevelopmentBuild
-    ? (buildMode === "Instalado" && !settings.preferManual
-      ? t("updates.expectedInstalled")
-      : t("updates.expectedAssisted"))
-    : "";
-  const diagnosticsNote = isDevelopmentBuild
-    ? (buildMode === "Instalado" && settings.preferManual
-      ? t("updates.manualNote")
-      : settings.includeBeta
-        ? t("updates.betaNote")
-        : "")
-    : "";
-  const appInfoCard = isDevelopmentBuild ? `
-    <article class="panel update-card update-diagnostics">
-      <h2>${escapeHtml(t("updates.diagnosticsTitle"))}</h2>
+  const updateEngine = isAutoUpdate
+    ? t("updates.engineActive")
+    : buildMode === "Instalado" && settings.preferManual
+      ? t("updates.engineManualPreference")
+      : buildMode === "Instalado" && update.autoUpdaterAvailable === false
+        ? t("updates.engineMissing")
+        : t("updates.engineAssisted");
+  const releaseRequirement = buildMode === "Instalado" && !settings.preferManual
+    ? t("updates.expectedInstalled")
+    : t("updates.expectedAssisted");
+  const diagnosticsNote = buildMode === "Instalado" && settings.preferManual
+    ? t("updates.manualNote")
+    : settings.includeBeta
+      ? t("updates.betaNote")
+      : "";
+  const appInfoCard = `
+    <details class="settings-card update-card update-technical-details">
+      <summary>${escapeHtml(t("updates.technicalDetails"))}</summary>
       <p>${escapeHtml(t("updates.diagnosticsText"))}</p>
-      <div class="update-diagnostics-grid">
-        <div><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
-        <div><span>${escapeHtml(t("updates.engine"))}</span><strong>${escapeHtml(updateEngine)}</strong></div>
-        <div><span>${escapeHtml(t("updates.expectedRelease"))}</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
-        <div><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
+      <div class="technical-details-grid">
+        <div class="update-detail-row"><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
+        <div class="update-detail-row"><span>${escapeHtml(t("updates.engine"))}</span><strong>${escapeHtml(updateEngine)}</strong></div>
+        <div class="update-detail-row"><span>${escapeHtml(t("updates.expectedRelease"))}</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
+        <div class="update-detail-row"><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
       </div>
       ${diagnosticsNote ? `<p class="muted">${escapeHtml(diagnosticsNote)}</p>` : ""}
       <div class="detail-actions update-actions">
         <button class="secondary" data-action="open-data-folder">${icon("external")}${t("updates.openData")}</button>
       </div>
-    </article>
-  ` : `
-    <article class="panel update-card update-diagnostics">
-      <h2>${escapeHtml(t("updates.appInfoTitle"))}</h2>
-      <p>${escapeHtml(t("updates.appInfoText"))}</p>
-      <div class="update-diagnostics-grid compact">
-        <div><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
-        <div><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
-      </div>
-      <div class="detail-actions update-actions">
-        <button class="secondary" data-action="open-data-folder">${icon("external")}${t("updates.openData")}</button>
-      </div>
-    </article>
+    </details>
   `;
   const actionByState = {
     idle: `<button class="primary" data-action="update-check">${icon("refresh")}${t("updates.checkNow")}</button>`,
@@ -3265,18 +3246,18 @@ function updatesTabV1() {
                     : escapeHtml(t("updates.defaultText"))}</p>
             </div>
           </div>
-          <div class="update-status-grid">
-            <div><span>${escapeHtml(t("updates.installedVersion"))}</span><strong>${escapeHtml(update.currentVersion || APP_VERSION_LABEL)}</strong></div>
-            <div><span>${escapeHtml(t("updates.latestVersion"))}</span><strong>${escapeHtml(update.latestVersion || t("common.notAvailable"))}</strong></div>
-            <div><span>${escapeHtml(t("updates.lastCheck"))}</span><strong>${escapeHtml(updateDate(update.lastCheckAt))}</strong></div>
-            <div><span>${escapeHtml(t("updates.channel"))}</span><strong>${escapeHtml(localizedUpdateChannel(update.channel))}</strong></div>
-            <div><span>${escapeHtml(t("updates.mode"))}</span><strong>${escapeHtml(modeLabel)}</strong></div>
-            <div><span>${escapeHtml(t("updates.artifact"))}</span><strong>${escapeHtml(isAutoUpdate ? t("updates.installerManaged") : (update.asset?.name || t("updates.notSelected")))}</strong></div>
-          </div>
         </article>
 
-        <article class="panel update-card">
-          <h2>${escapeHtml(t("updates.actions"))}</h2>
+        <article class="settings-card vertical update-card update-version-details">
+          <h2>${escapeHtml(t("updates.versionDetails"))}</h2>
+          <div class="update-detail-list">
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.installedVersion"))}</span><strong>${escapeHtml(update.currentVersion || APP_VERSION_LABEL)}</strong></div>
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.latestVersion"))}</span><strong>${escapeHtml(update.latestVersion || t("common.notAvailable"))}</strong></div>
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.lastCheck"))}</span><strong>${escapeHtml(updateDate(update.lastCheckAt))}</strong></div>
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.channel"))}</span><strong>${escapeHtml(localizedUpdateChannel(update.channel))}</strong></div>
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.mode"))}</span><strong>${escapeHtml(modeLabel)}</strong></div>
+            <div class="update-detail-row"><span>${escapeHtml(t("updates.artifact"))}</span><strong>${escapeHtml(isAutoUpdate ? t("updates.installerManaged") : (update.asset?.name || t("updates.notSelected")))}</strong></div>
+          </div>
           <p>${isAssisted
             ? escapeHtml(t("updates.assistedText"))
             : escapeHtml(t("updates.autoText"))}</p>
@@ -3290,7 +3271,7 @@ function updatesTabV1() {
 
         ${appInfoCard}
 
-        <article class="panel update-card">
+        <article class="settings-card vertical update-card update-changelog-card">
           <h2>${escapeHtml(t("updates.changelog"))}</h2>
           ${changelogSource === "local" ? `<p class="muted">${escapeHtml(t("updates.localChangelog"))}</p>` : ""}
           ${changelogSections.length ? `
@@ -3305,7 +3286,7 @@ function updatesTabV1() {
           ` : `<p class="muted">${escapeHtml(t("updates.noChangelog"))}</p>`}
         </article>
 
-        <article class="panel update-card">
+        <article class="settings-card vertical update-card update-preferences-card">
           <h2>${escapeHtml(t("updates.preferences"))}</h2>
           <div class="update-preferences">
             <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> ${escapeHtml(t("updates.prefCheckStartup"))}</label>

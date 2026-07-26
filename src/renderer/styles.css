@@ -2722,33 +2722,6 @@ input[type="checkbox"] {
   height: 34px;
 }
 
-.update-status-grid {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
-  gap: 10px;
-  margin-top: 4px;
-}
-
-.update-status-grid div {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 84%, var(--background));
-  padding: 12px 14px;
-}
-
-.update-status-grid span {
-  display: block;
-  color: var(--textMuted);
-  font-size: 12px;
-}
-
-.update-status-grid strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 14px;
-}
-
 .update-heading {
   display: flex;
   gap: 16px;
@@ -2769,6 +2742,17 @@ input[type="checkbox"] {
 .update-grid {
   display: grid;
   gap: 18px;
+}
+
+.update-grid .settings-card {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-6);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--textPrimary) 8%, transparent);
 }
 
 .update-card {
@@ -2848,11 +2832,6 @@ input[type="checkbox"] {
   color: var(--textMuted);
 }
 
-.update-status-card .update-status-grid {
-  margin-top: 18px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .update-actions {
   margin-top: 18px;
 }
@@ -2870,33 +2849,66 @@ input[type="checkbox"] {
   font-weight: 800;
 }
 
-.update-diagnostics-grid {
+.update-detail-list,
+.technical-details-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
 }
 
-.update-diagnostics-grid div {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 86%, var(--background));
-  padding: 12px 14px;
+.update-detail-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  gap: var(--space-6);
+  align-items: center;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) 0;
 }
 
-.update-diagnostics-grid span {
-  display: block;
+.update-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.update-detail-row span {
+  margin: 0;
   color: var(--textMuted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
-.update-diagnostics-grid strong {
+.update-detail-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+details.settings-card {
   display: block;
-  overflow: hidden;
-  margin-top: 6px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+details.settings-card summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+details.settings-card summary::-webkit-details-marker {
+  display: none;
+}
+
+details.settings-card summary::after {
+  content: "▾";
+  float: right;
+  transition: transform 150ms ease;
+}
+
+details.settings-card[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.update-technical-details[open] summary {
+  margin-bottom: var(--space-4);
+}
+
+.update-technical-details > p {
+  margin-bottom: var(--space-4);
 }
 
 .update-changelog {
@@ -2905,10 +2917,13 @@ input[type="checkbox"] {
 }
 
 .update-changelog section {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 86%, var(--background));
-  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  padding: var(--space-4) 0 0;
+}
+
+.update-changelog section:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .update-changelog h3 {
@@ -4791,8 +4806,6 @@ input[type="checkbox"] {
   .report-grid,
   .history-summary-cards,
   .history-scan-card,
-  .update-status-grid,
-  .update-diagnostics-grid,
   .quick-actions,
   .folders-filters,
   .files-filters,
@@ -4802,6 +4815,11 @@ input[type="checkbox"] {
   .settings-card,
   .setting-row {
     grid-template-columns: 1fr;
+  }
+
+  .update-detail-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
   }
 
   .category-row {
