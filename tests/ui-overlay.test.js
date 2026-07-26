@@ -93,7 +93,7 @@ test("accent customizado aplica em tempo real e persiste separado do tema", () =
 
 test("restaurar accent remove apenas a cor customizada e preserva o tema", () => {
   assert.match(renderer, /currentAccent \? `[\s\S]*?data-action="reset-accent"[\s\S]*?` : ""/);
-  assert.match(renderer, /if \(action === "reset-accent"\) \{[\s\S]*?previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;[\s\S]*?customAccent: null[\s\S]*?applyCustomAccent\(null\);[\s\S]*?persistSettingsSoon\(\);/);
+  assert.match(renderer, /if \(action === "reset-accent"\) \{[\s\S]*?const accentBeingReset = state\.settings\.appearance\?\.customAccent \|\| null;[\s\S]*?customAccent: null[\s\S]*?applyCustomAccent\(null\);[\s\S]*?persistSettingsSoon\(\);/);
   assert.doesNotMatch(
     renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "",
     /settings\.theme\s*=/
@@ -104,12 +104,23 @@ test("restaurar accent remove apenas a cor customizada e preserva o tema", () =>
 
 test("restaurar accent substitui o toast e pode desfazer para a cor personalizada", () => {
   const resetHandler = renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "";
-  assert.match(resetHandler, /previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;/);
+  assert.match(resetHandler, /const accentBeingReset = state\.settings\.appearance\?\.customAccent \|\| null;/);
+  assert.match(resetHandler, /previousAccent = undoAlreadyConsumed \? null : accentBeingReset;/);
   assert.match(resetHandler, /message: t\("settings\.accentResetToast"\)/);
   assert.match(resetHandler, /action: "undo-accent"/);
   assert.match(resetHandler, /actionLabel: t\("common\.undo"\)/);
+  assert.match(resetHandler, /accentAction: "reset"/);
   assert.equal(ptBR.messages["settings.accentResetToast"], "Aparência padrão restaurada.");
   assert.equal(enUS.messages["settings.accentResetToast"], "Default appearance restored.");
+});
+
+test("desfazer restauração é consumido uma vez e não cria pingue-pongue infinito", () => {
+  assert.match(renderer, /let accentResetUndoConsumedFor = null;/);
+  assert.match(renderer, /if \(action === "undo-accent"\) \{[\s\S]*?const undoWasReset = state\.toast\?\.accentAction === "reset";[\s\S]*?accentResetUndoConsumedFor = undoWasReset \? accentToRestore : null;/);
+  const resetHandler = renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "";
+  assert.match(resetHandler, /const undoAlreadyConsumed = accentResetUndoConsumedFor === accentBeingReset;/);
+  assert.match(resetHandler, /setToast\(undoAlreadyConsumed[\s\S]*?\? \{ message: t\("settings\.accentResetToast"\) \}[\s\S]*?: \{[\s\S]*?action: "undo-accent"/);
+  assert.match(renderer, /function selectAccent\(hex, options = \{\}\)[\s\S]*?accentResetUndoConsumedFor = null;/);
 });
 
 test("accent avisa contraste de interface abaixo de 3:1 sem bloquear a aplicação", () => {
@@ -138,7 +149,7 @@ test("accent avisa colisões com os tokens de status do tema ativo", () => {
 test("troca de accent oferece desfazer exato sem empilhar toasts", () => {
   assert.match(renderer, /let previousAccent = null;/);
   assert.match(renderer, /function selectAccent\(hex, options = \{\}\)[\s\S]*?previousAccent = accentBeforeChange;[\s\S]*?action: "undo-accent"[\s\S]*?actionLabel: t\("common\.undo"\)/);
-  assert.match(renderer, /if \(action === "undo-accent"\) \{[\s\S]*?customAccent: previousAccent[\s\S]*?applyCustomAccent\(previousAccent\);[\s\S]*?state\.toast = "";/);
+  assert.match(renderer, /if \(action === "undo-accent"\) \{[\s\S]*?const accentToRestore = previousAccent;[\s\S]*?customAccent: accentToRestore[\s\S]*?applyCustomAccent\(accentToRestore\);[\s\S]*?state\.toast = "";/);
   assert.match(renderer, /state\.toast = toast\.message \? toast : "";/);
   assert.equal(ptBR.messages["common.undo"], "Desfazer");
   assert.equal(enUS.messages["common.undo"], "Undo");

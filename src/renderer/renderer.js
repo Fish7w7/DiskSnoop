@@ -97,6 +97,7 @@ let lastRenderedTab = null;
 let pendingTableRefresh = 0;
 let previousAccent = null;
 let customAccentStartValue;
+let accentResetUndoConsumedFor = null;
 const animatedMetricValues = new Map();
 const animatedMetricTargets = new Map();
 const metricAnimationFrames = new Map();
@@ -2369,6 +2370,7 @@ function selectAccent(hex, options = {}) {
   const normalizedHex = updateAccentState(hex);
   if (!normalizedHex) return;
   previousAccent = accentBeforeChange;
+  accentResetUndoConsumedFor = null;
   persistSettingsSoon();
   setToast({
     message: t("settings.accentChangedToast"),
@@ -4115,11 +4117,14 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "undo-accent") {
+    const undoWasReset = state.toast?.accentAction === "reset";
+    const accentToRestore = previousAccent;
     state.settings.appearance = {
       ...(state.settings.appearance || {}),
-      customAccent: previousAccent
+      customAccent: accentToRestore
     };
-    applyCustomAccent(previousAccent);
+    applyCustomAccent(accentToRestore);
+    accentResetUndoConsumedFor = undoWasReset ? accentToRestore : null;
     previousAccent = null;
     state.toast = "";
     persistSettingsSoon();
@@ -4309,18 +4314,24 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "reset-accent") {
     customAccentStartValue = undefined;
-    previousAccent = state.settings.appearance?.customAccent || null;
+    const accentBeingReset = state.settings.appearance?.customAccent || null;
+    const undoAlreadyConsumed = accentResetUndoConsumedFor === accentBeingReset;
+    accentResetUndoConsumedFor = null;
+    previousAccent = undoAlreadyConsumed ? null : accentBeingReset;
     state.settings.appearance = {
       ...(state.settings.appearance || {}),
       customAccent: null
     };
     applyCustomAccent(null);
     persistSettingsSoon();
-    setToast({
-      message: t("settings.accentResetToast"),
-      action: "undo-accent",
-      actionLabel: t("common.undo")
-    });
+    setToast(undoAlreadyConsumed
+      ? { message: t("settings.accentResetToast") }
+      : {
+          message: t("settings.accentResetToast"),
+          action: "undo-accent",
+          actionLabel: t("common.undo"),
+          accentAction: "reset"
+        });
     render();
     return;
   }
