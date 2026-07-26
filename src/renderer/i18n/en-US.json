@@ -174,6 +174,7 @@
     "settings.accentWarningContrast": "This color may be hard to see in the current theme.",
     "settings.accentWarningStatus": "This color is similar to the app's {status} color, which may cause confusion.",
     "settings.accentChangedToast": "Accent color changed.",
+    "settings.accentResetToast": "Default appearance restored.",
     "settings.language": "Language",
     "settings.languageLabel": "Interface language",
     "settings.languageHelp": "Choose the language used in the app menus, screens, and messages.",

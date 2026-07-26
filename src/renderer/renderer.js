@@ -4309,12 +4309,18 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "reset-accent") {
     customAccentStartValue = undefined;
+    previousAccent = state.settings.appearance?.customAccent || null;
     state.settings.appearance = {
       ...(state.settings.appearance || {}),
       customAccent: null
     };
     applyCustomAccent(null);
     persistSettingsSoon();
+    setToast({
+      message: t("settings.accentResetToast"),
+      action: "undo-accent",
+      actionLabel: t("common.undo")
+    });
     render();
     return;
   }

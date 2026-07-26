@@ -93,13 +93,23 @@ test("accent customizado aplica em tempo real e persiste separado do tema", () =
 
 test("restaurar accent remove apenas a cor customizada e preserva o tema", () => {
   assert.match(renderer, /currentAccent \? `[\s\S]*?data-action="reset-accent"[\s\S]*?` : ""/);
-  assert.match(renderer, /if \(action === "reset-accent"\) \{[\s\S]*?customAccent: null[\s\S]*?applyCustomAccent\(null\);[\s\S]*?persistSettingsSoon\(\);/);
+  assert.match(renderer, /if \(action === "reset-accent"\) \{[\s\S]*?previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;[\s\S]*?customAccent: null[\s\S]*?applyCustomAccent\(null\);[\s\S]*?persistSettingsSoon\(\);/);
   assert.doesNotMatch(
     renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "",
     /settings\.theme\s*=/
   );
   assert.equal(ptBR.messages["settings.resetAccent"], "Restaurar aparência padrão");
   assert.equal(enUS.messages["settings.resetAccent"], "Restore default appearance");
+});
+
+test("restaurar accent substitui o toast e pode desfazer para a cor personalizada", () => {
+  const resetHandler = renderer.match(/if \(action === "reset-accent"\) \{[\s\S]*?\n  \}/)?.[0] || "";
+  assert.match(resetHandler, /previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;/);
+  assert.match(resetHandler, /message: t\("settings\.accentResetToast"\)/);
+  assert.match(resetHandler, /action: "undo-accent"/);
+  assert.match(resetHandler, /actionLabel: t\("common\.undo"\)/);
+  assert.equal(ptBR.messages["settings.accentResetToast"], "Aparência padrão restaurada.");
+  assert.equal(enUS.messages["settings.accentResetToast"], "Default appearance restored.");
 });
 
 test("accent avisa contraste de interface abaixo de 3:1 sem bloquear a aplicação", () => {
