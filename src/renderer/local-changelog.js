@@ -1,4 +1,34 @@
 window.diskSnoopLocalChangelog = {
+  "1.10.0": {
+    "pt-BR": {
+      title: "DiskSnoop 1.10.0",
+      sections: [
+        {
+          title: "Manutenção interna",
+          items: [
+            "O pacote agora mantém somente os idiomas internos en-US e pt-BR do Chromium, reduzindo 7,96 MiB tanto no instalador quanto na versão portable.",
+            "A auditoria do pacote removeu os assets órfãos snoopy-source.png e snoop-transparent.png, além de source maps das dependências de produção.",
+            "A fonte Inter agora inclui somente a variação normal, com subsets Latin e Latin Extended, usada pela interface nos pesos 400, 500, 600, 650, 700 e 800.",
+            "Exports e traduções sem uso foram removidos depois de revisão manual e validação automatizada, sem mudanças na interface ou no comportamento."
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      title: "DiskSnoop 1.10.0",
+      sections: [
+        {
+          title: "Internal maintenance",
+          items: [
+            "The package now keeps only Chromium's internal en-US and pt-BR languages, reducing both the installer and portable build by 7.96 MiB.",
+            "The package audit removed the orphaned snoopy-source.png and snoop-transparent.png assets, along with production dependency source maps.",
+            "The bundled Inter font now includes only its normal variation with Latin and Latin Extended subsets, used by the interface at weights 400, 500, 600, 650, 700, and 800.",
+            "Unused exports and translations were removed after manual review and automated validation, with no interface or behavior changes."
+          ]
+        }
+      ]
+    }
+  },
   "1.9.0": {
     "pt-BR": {
       title: "DiskSnoop 1.9.0",

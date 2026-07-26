@@ -126,9 +126,6 @@ function assertCanCrossVolumeMove(stat) {
 }
 
 module.exports = {
-  PROTECTED_APP_DATA_PATH_SEGMENTS,
-  SENSITIVE_WINDOWS_PATH_SEGMENTS,
-  pathKey,
   sameOrInsidePath,
   pathProtection,
   canMoveToQuarantineByPolicy,

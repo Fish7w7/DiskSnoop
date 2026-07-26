@@ -115,8 +115,6 @@ function createInstalledAppsInventory({ runPowerShell, platform = process.platfo
 }
 
 module.exports = {
-  INSTALLED_APPS_SCRIPT,
   createInstalledAppsInventory,
-  failClosedInventory,
   parseInstalledAppsOutput
 };

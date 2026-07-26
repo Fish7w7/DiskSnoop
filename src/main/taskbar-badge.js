@@ -29,6 +29,5 @@ function createTaskbarBadgeController({ nativeImage, iconPath, translate }) {
 
 module.exports = {
   SCAN_COMPLETE_DESCRIPTION_KEY,
-  SCAN_COMPLETE_DESCRIPTION_FALLBACK,
   createTaskbarBadgeController
 };

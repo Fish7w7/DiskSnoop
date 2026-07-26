@@ -1,6 +1,6 @@
 {
   "name": "disksnoop",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Investigador visual de armazenamento para Windows.",
   "main": "src/main/main.js",
   "author": "DiskSnoop contributors",
@@ -89,6 +89,7 @@
   },
   "devDependencies": {
     "electron": "^43.1.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "knip": "^6.29.0"
   }
 }

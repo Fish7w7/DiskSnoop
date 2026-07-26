@@ -5,8 +5,18 @@ const path = require("node:path");
 
 const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
 const renderer = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "renderer.js"), "utf8");
+const indexHtml = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "index.html"), "utf8");
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
 const ptBR = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "i18n", "pt-BR.json"), "utf8"));
 const enUS = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "i18n", "en-US.json"), "utf8"));
+
+test("fallbacks visuais acompanham a versão do pacote", () => {
+  const escapedVersion = packageJson.version.replaceAll(".", "\\.");
+  assert.match(indexHtml, new RegExp(`<span class="boot-version">v${escapedVersion}</span>`));
+  assert.match(renderer, new RegExp(`let APP_VERSION_LABEL = "${escapedVersion}";`));
+  assert.equal(ptBR.version, packageJson.version);
+  assert.equal(enUS.version, packageJson.version);
+});
 
 test("backdrop preserva transparência em hover, foco e clique", () => {
   assert.match(css, /:root \.detail-overlay button\.detail-overlay-backdrop:is\(:hover, :focus, :active\)\s*\{[\s\S]*?background:\s*color-mix\(in srgb, var\(--background\) 54%, transparent\);/);

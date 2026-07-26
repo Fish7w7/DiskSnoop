@@ -31,7 +31,6 @@ function resolveInitialLanguage(savedLanguage, getSystemLocale, fallback = "pt-B
 }
 
 module.exports = {
-  isSupportedLanguage,
   languageFromSystemLocale,
   resolveInitialLanguage
 };

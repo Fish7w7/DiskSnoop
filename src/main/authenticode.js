@@ -62,7 +62,6 @@ function createAuthenticodeVerifier({ runPowerShell, platform = process.platform
 }
 
 module.exports = {
-  SIGNABLE_EXTENSIONS,
   authenticodeScript,
   createAuthenticodeVerifier,
   escapePowerShellSingleQuoted,
