@@ -19,7 +19,7 @@ const STATUS_COLLISION_THRESHOLD = 60;
 const { hexToRgb, rgbToCss, mixRgb, contrastRatio, rgbDistance } = window.diskSnoopColorUtils || {};
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.8.0-beta.2";
+let APP_VERSION_LABEL = "1.8.0";
 
 const state = {
   screen: "welcome",
