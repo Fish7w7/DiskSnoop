@@ -238,9 +238,6 @@ body,
     animation: none;
   }
 
-  .boot-card.boot-card-enter {
-    animation: none;
-  }
 }
 
 input,
@@ -322,15 +319,6 @@ select,
     var(--shadow);
   padding: 38px 32px 32px;
   text-align: center;
-}
-
-.boot-card.boot-card-enter {
-  animation: boot-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
-}
-
-@keyframes boot-rise {
-  from { opacity: 0; transform: translateY(18px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Ring animado ao redor do ícone */
@@ -2886,6 +2874,18 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
+.update-local-data {
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+}
+
+.update-action-note {
+  margin-top: var(--space-3) !important;
+  color: var(--textMuted) !important;
+  font-size: var(--text-xs);
+}
+
 details.settings-card {
   display: block;
 }
@@ -2948,23 +2948,31 @@ details.settings-card[open] summary::after {
 
 .update-preferences {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
-.update-preferences label {
+.preference-item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.preference-item label {
   display: flex;
   gap: 10px;
   align-items: center;
   color: var(--textPrimary);
 }
 
-.update-preferences label.disabled {
+.preference-note {
+  margin: 0;
+  padding-left: 28px;
   color: var(--textMuted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
 }
 
-.update-preferences span {
+.preference-item label.disabled {
   color: var(--textMuted);
-  font-size: 12px;
 }
 
 .settings-card {
@@ -3207,13 +3215,35 @@ details.settings-card[open] summary::after {
   overflow: hidden;
 }
 
-.welcome-bg-grid {
+.welcome-bg-blobs {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.5;
+  overflow: hidden;
   pointer-events: none;
+}
+
+.welcome-bg-blobs::before,
+.welcome-bg-blobs::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.welcome-bg-blobs::before {
+  width: 340px;
+  height: 340px;
+  top: -120px;
+  right: -80px;
+}
+
+.welcome-bg-blobs::after {
+  width: 260px;
+  height: 260px;
+  bottom: -100px;
+  left: 12%;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .welcome-glow {
@@ -3226,11 +3256,15 @@ details.settings-card[open] summary::after {
 .welcome-inner {
   position: relative;
   z-index: 1;
-  width: min(860px, 100%);
   padding: clamp(24px, 4vw, 48px) clamp(18px, 3vw, 36px);
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
+}
+
+.welcome-inner-split {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(300px, 380px);
+  gap: 48px;
+  align-items: center;
 }
 
 .welcome-hero {
@@ -3239,6 +3273,15 @@ details.settings-card[open] summary::after {
   align-items: center;
   text-align: center;
   gap: 18px;
+}
+
+.welcome-hero-left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.welcome-hero-left .welcome-sub {
+  max-width: 42ch;
 }
 
 .welcome-logo-wrap {
@@ -3290,7 +3333,7 @@ details.settings-card[open] summary::after {
 .welcome-actions {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   margin-top: 6px;
 }
@@ -3314,31 +3357,39 @@ details.settings-card[open] summary::after {
   flex: 0 0 14px;
 }
 
-.welcome-features {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.welcome-feature-card {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  padding: 22px 20px;
+.welcome-journey {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
 }
 
-.welcome-feature-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.09);
-  transform: translateY(-2px);
+.welcome-journey-line {
+  position: absolute;
+  left: 23px;
+  top: 28px;
+  bottom: 28px;
+  width: 2px;
+  background: var(--border);
+}
+
+.welcome-journey-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.welcome-journey-label {
+  font-size: 12px;
+  color: var(--textMuted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .wf-icon {
+  position: relative;
+  z-index: 1;
   width: 40px;
   height: 40px;
   border-radius: 10px;
@@ -3354,22 +3405,35 @@ details.settings-card[open] summary::after {
   height: 20px;
 }
 
-.welcome-feature-card h3 {
+.welcome-journey-step h3 {
   font-size: 14px;
   font-weight: 700;
-  margin: 0;
+  margin: 2px 0 4px;
 }
 
-.welcome-feature-card p {
+.welcome-journey-step p {
   font-size: 13px;
   color: var(--textMuted);
   line-height: 1.55;
   margin: 0;
 }
 
-@media (max-width: 700px) {
-  .welcome-features {
+@media (max-width: 900px) {
+  .welcome-inner-split {
     grid-template-columns: 1fr;
+  }
+
+  .welcome-hero-left {
+    align-items: center;
+    text-align: center;
+  }
+
+  .welcome-hero-left .welcome-sub {
+    max-width: 580px;
+  }
+
+  .welcome-actions {
+    align-items: center;
   }
 }
 
@@ -4559,7 +4623,6 @@ details.settings-card[open] summary::after {
 :root[data-theme="dark"] .metric-card,
 :root[data-theme="dark"] .scan-card,
 :root[data-theme="dark"] .safe-note,
-:root[data-theme="dark"] .welcome-feature-card,
 :root[data-theme="dark"] .settings-card,
 :root[data-theme="dark"] .content-preview,
 :root[data-theme="dark"] .app-modal,
@@ -4569,7 +4632,6 @@ details.settings-card[open] summary::after {
 :root[data-theme="graphite"] .metric-card,
 :root[data-theme="graphite"] .scan-card,
 :root[data-theme="graphite"] .safe-note,
-:root[data-theme="graphite"] .welcome-feature-card,
 :root[data-theme="graphite"] .settings-card,
 :root[data-theme="graphite"] .content-preview,
 :root[data-theme="graphite"] .app-modal,

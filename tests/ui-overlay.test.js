@@ -81,6 +81,28 @@ test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
   assert.doesNotMatch(JSON.stringify(ptBR.messages) + JSON.stringify(enUS.messages), /Hacker|Neon/);
 });
 
+test("boas-vindas usa duas colunas, jornada conectada e blobs sem alterar o mascote", () => {
+  assert.match(renderer, /class="welcome-bg-blobs"/);
+  assert.match(renderer, /class="welcome-inner welcome-inner-split"[\s\S]*?class="welcome-hero welcome-hero-left"/);
+  assert.match(renderer, /\$\{appLogo\("big"\)\}/);
+  assert.equal((renderer.match(/class="welcome-journey-step"/g) || []).length, 3);
+  assert.match(renderer, /class="welcome-journey-line"/);
+  assert.doesNotMatch(renderer, /welcome-bg-grid|welcome-features|welcome-feature-card/);
+
+  assert.match(css, /\.welcome-inner-split\s*\{[\s\S]*?grid-template-columns:\s*minmax\(320px,\s*1fr\)\s+minmax\(300px,\s*380px\);[\s\S]*?gap:\s*48px;/);
+  assert.match(css, /\.welcome-journey-line\s*\{[\s\S]*?left:\s*23px;[\s\S]*?width:\s*2px;[\s\S]*?background:\s*var\(--border\);/);
+  assert.match(css, /\.welcome-bg-blobs::before,[\s\S]*?filter:\s*blur\(60px\);[\s\S]*?var\(--accent\)\s*18%/);
+  assert.match(css, /@media \(max-width:\s*900px\)\s*\{[\s\S]*?\.welcome-inner-split\s*\{[\s\S]*?grid-template-columns:\s*1fr;/);
+  assert.doesNotMatch(css, /welcome-bg-grid|welcome-features|welcome-feature-card(?:\:hover)?/);
+
+  assert.equal(ptBR.messages["welcome.stepOne"], "Passo 1");
+  assert.equal(ptBR.messages["welcome.stepTwo"], "Passo 2");
+  assert.equal(ptBR.messages["welcome.stepThree"], "Passo 3");
+  assert.equal(enUS.messages["welcome.stepOne"], "Step 1");
+  assert.equal(enUS.messages["welcome.stepTwo"], "Step 2");
+  assert.equal(enUS.messages["welcome.stepThree"], "Step 3");
+});
+
 test("accent customizado aplica em tempo real e persiste separado do tema", () => {
   assert.match(renderer, /const ACCENT_PRESETS = \[[\s\S]*?"#2f80ff"[\s\S]*?"#38b000"[\s\S]*?\];/);
   assert.match(renderer, /function applyCustomAccent\(hex\)[\s\S]*?setProperty\("--accent", hex\)[\s\S]*?mixRgb\(hexToRgb\(hex\), hexToRgb\(surfaceHex \|\| "#ffffff"\), 0\.82\)/);
@@ -246,4 +268,19 @@ test("aba Atualização separa versão e detalhes técnicos sem perder informaç
   assert.equal(enUS.messages["updates.versionDetails"], "Version details");
   assert.equal(ptBR.messages["updates.technicalDetails"], "Detalhes técnicos");
   assert.equal(enUS.messages["updates.technicalDetails"], "Technical details");
+});
+
+test("aba Atualização mantém notas e caminhos legíveis no layout estreito", () => {
+  const actionsIndex = renderer.indexOf('class="detail-actions update-actions"');
+  const noteIndex = renderer.indexOf('class="update-action-note"');
+  assert.ok(actionsIndex >= 0 && noteIndex > actionsIndex);
+  assert.match(renderer, /class="update-local-data"[\s\S]*?\$\{escapeHtml\(dataLocation\)\}/);
+  assert.match(css, /\.update-local-data\s*\{[\s\S]*?overflow-wrap:\s*break-word;[\s\S]*?white-space:\s*normal;/);
+  assert.equal((renderer.match(/class="preference-item"/g) || []).length, 4);
+  assert.match(renderer, /class="preference-item"[\s\S]*?data-update-pref="autoDownload"[\s\S]*?class="preference-note"[\s\S]*?prefAutoDownloadHelp/);
+  assert.doesNotMatch(renderer, /update-preference-with-help|update-preference-control|update-preference-help/);
+  assert.match(css, /\.update-preferences\s*\{[\s\S]*?gap:\s*var\(--space-3\);/);
+  assert.match(css, /\.preference-item\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*var\(--space-1\);/);
+  assert.match(css, /\.preference-note\s*\{[\s\S]*?margin:\s*0;[\s\S]*?padding-left:\s*28px;[\s\S]*?font-size:\s*var\(--text-xs\);/);
+  assert.match(css, /\.update-action-note\s*\{[\s\S]*?font-size:\s*var\(--text-xs\);/);
 });

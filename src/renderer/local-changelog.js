@@ -8,7 +8,6 @@ window.diskSnoopLocalChangelog = {
           items: [
             "Scans concluídos em segundo plano agora exibem um badge no ícone da barra de tarefas até o DiskSnoop voltar ao foco.",
             "A tela de Atualização foi reorganizada para destacar o estado e os dados da versão, mantendo os diagnósticos técnicos recolhidos por padrão.",
-            "A abertura da janela ganhou uma transição curta de fade e escala, desativada quando o sistema pede movimento reduzido.",
             "As métricas da Visão Geral agora aparecem imediatamente, sem animação de contagem.",
             "Pequenas oscilações de espaço revisável entre scans agora são identificadas como estáveis em vez de sugerirem ganho ou perda relevante."
           ]
@@ -23,7 +22,6 @@ window.diskSnoopLocalChangelog = {
           items: [
             "Scans completed in the background now show a badge on the taskbar icon until DiskSnoop regains focus.",
             "The Update screen was reorganized to highlight status and version information, with technical diagnostics collapsed by default.",
-            "Window opening now uses a short fade-and-scale transition, disabled when the system requests reduced motion.",
             "Overview metrics now appear immediately, without a count-up animation.",
             "Small fluctuations in reviewable space between scans are now identified as stable instead of suggesting a meaningful gain or loss."
           ]

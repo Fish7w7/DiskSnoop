@@ -10,6 +10,7 @@ const { createInstalledAppsInventory } = require("./installed-apps");
 const { createAuthenticodeVerifier } = require("./authenticode");
 const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
 const { createTaskbarBadgeController } = require("./taskbar-badge");
+const { resolveInitialLanguage } = require("./system-language");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -144,6 +145,11 @@ async function appendAuditEntry(action, details = {}) {
 
 async function getSettings() {
   const saved = await readJson("settings.json", {});
+  const languageResolution = resolveInitialLanguage(
+    saved.language,
+    () => app.getLocale(),
+    defaultSettings.language
+  );
   const savedUpdate = saved.update || {};
   const shouldMigrateAutoDownload = saved.settingsVersion !== 2 && savedUpdate.autoDownload === false;
   const settings = {
@@ -151,7 +157,7 @@ async function getSettings() {
     ...saved,
     settingsVersion: defaultSettings.settingsVersion,
     theme: resolveBootThemePreference(saved.theme ?? defaultSettings.theme),
-    language: ["pt-BR", "en-US"].includes(saved.language) ? saved.language : defaultSettings.language,
+    language: languageResolution.language,
     appearance: normalizeAppearance(saved.appearance),
     ignoredPaths: Array.isArray(saved.ignoredPaths) ? saved.ignoredPaths : defaultSettings.ignoredPaths,
     includedPaths: Array.isArray(saved.includedPaths) ? saved.includedPaths : defaultSettings.includedPaths,
@@ -165,7 +171,9 @@ async function getSettings() {
           : defaultSettings.update.autoDownload
     }
   };
-  if (saved.theme && saved.theme !== settings.theme) await writeJson("settings.json", settings);
+  if (languageResolution.shouldPersist || (saved.theme && saved.theme !== settings.theme)) {
+    await writeJson("settings.json", settings);
+  }
   return settings;
 }
 
@@ -1071,17 +1079,6 @@ async function createWindow() {
   mainWindow.setIcon(paths.icon);
   mainWindow.on("focus", () => {
     taskbarBadge.clear(mainWindow);
-  });
-  mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow?.webContents.executeJavaScript(`
-      (() => {
-        const card = document.querySelector(".boot-card");
-        if (!card) return;
-        card.classList.remove("boot-card-enter");
-        void card.offsetWidth;
-        card.classList.add("boot-card-enter");
-      })()
-    `).catch(() => {});
   });
   mainWindow.once("ready-to-show", () => {
     if (!mainWindow?.isDestroyed()) mainWindow.show();

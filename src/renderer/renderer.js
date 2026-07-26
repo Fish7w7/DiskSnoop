@@ -859,10 +859,10 @@ function welcomeScreen() {
     <div class="window">
       ${appHeader()}
       <main class="welcome-clean">
-        <div class="welcome-bg-grid"></div>
+        <div class="welcome-bg-blobs"></div>
         <div class="welcome-glow"></div>
-        <div class="welcome-inner">
-          <div class="welcome-hero">
+        <div class="welcome-inner welcome-inner-split">
+          <div class="welcome-hero welcome-hero-left">
             <div class="welcome-logo-wrap">
               ${appLogo("big")}
               <div class="welcome-logo-ring"></div>
@@ -880,27 +880,31 @@ function welcomeScreen() {
             </div>
           </div>
 
-          <div class="welcome-features">
-            <div class="welcome-feature-card">
-              <div class="wf-icon">
-                ${icon("folder")}
+          <div class="welcome-journey">
+            <div class="welcome-journey-line"></div>
+            <div class="welcome-journey-step">
+              <div class="wf-icon">${icon("folder")}</div>
+              <div>
+                <span class="welcome-journey-label">${escapeHtml(t("welcome.stepOne"))}</span>
+                <h3>${escapeHtml(t("welcome.largeFoldersTitle"))}</h3>
+                <p>${escapeHtml(t("welcome.largeFoldersText"))}</p>
               </div>
-              <h3>${escapeHtml(t("welcome.largeFoldersTitle"))}</h3>
-              <p>${escapeHtml(t("welcome.largeFoldersText"))}</p>
             </div>
-            <div class="welcome-feature-card">
-              <div class="wf-icon">
-                ${icon("clipboard")}
+            <div class="welcome-journey-step">
+              <div class="wf-icon">${icon("clipboard")}</div>
+              <div>
+                <span class="welcome-journey-label">${escapeHtml(t("welcome.stepTwo"))}</span>
+                <h3>${escapeHtml(t("welcome.cleanupTitle"))}</h3>
+                <p>${escapeHtml(t("welcome.cleanupText"))}</p>
               </div>
-              <h3>${escapeHtml(t("welcome.cleanupTitle"))}</h3>
-              <p>${escapeHtml(t("welcome.cleanupText"))}</p>
             </div>
-            <div class="welcome-feature-card">
-              <div class="wf-icon">
-                ${icon("shield")}
+            <div class="welcome-journey-step">
+              <div class="wf-icon">${icon("shield")}</div>
+              <div>
+                <span class="welcome-journey-label">${escapeHtml(t("welcome.stepThree"))}</span>
+                <h3>${escapeHtml(t("welcome.quarantineTitle"))}</h3>
+                <p>${escapeHtml(t("welcome.quarantineText"))}</p>
               </div>
-              <h3>${escapeHtml(t("welcome.quarantineTitle"))}</h3>
-              <p>${escapeHtml(t("welcome.quarantineText"))}</p>
             </div>
           </div>
         </div>
@@ -3147,7 +3151,7 @@ function updatesTabV1() {
         <div class="update-detail-row"><span>${escapeHtml(t("updates.appMode"))}</span><strong>${escapeHtml(localizedBuildMode(buildMode))}</strong></div>
         <div class="update-detail-row"><span>${escapeHtml(t("updates.engine"))}</span><strong>${escapeHtml(updateEngine)}</strong></div>
         <div class="update-detail-row"><span>${escapeHtml(t("updates.expectedRelease"))}</span><strong>${escapeHtml(releaseRequirement)}</strong></div>
-        <div class="update-detail-row"><span>${escapeHtml(t("updates.localData"))}</span><strong title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
+        <div class="update-detail-row"><span>${escapeHtml(t("updates.localData"))}</span><strong class="update-local-data" title="${escapeHtml(dataLocation)}">${escapeHtml(dataLocation)}</strong></div>
       </div>
       ${diagnosticsNote ? `<p class="muted">${escapeHtml(diagnosticsNote)}</p>` : ""}
       <div class="detail-actions update-actions">
@@ -3215,15 +3219,15 @@ function updatesTabV1() {
             <div class="update-detail-row"><span>${escapeHtml(t("updates.mode"))}</span><strong>${escapeHtml(modeLabel)}</strong></div>
             <div class="update-detail-row"><span>${escapeHtml(t("updates.artifact"))}</span><strong>${escapeHtml(isAutoUpdate ? t("updates.installerManaged") : (update.asset?.name || t("updates.notSelected")))}</strong></div>
           </div>
-          <p>${isAssisted
-            ? escapeHtml(t("updates.assistedText"))
-            : escapeHtml(t("updates.autoText"))}</p>
           ${update.status === "downloading" ? `<div class="update-progress">${progressBar(update.progress || 0)}<span>${Math.round(update.progress || 0)}%</span></div>` : ""}
           <div class="detail-actions update-actions">
             ${actionByState[update.status] || actionByState.idle}
             <button class="secondary" data-action="update-open-releases">${icon("external")}${t("updates.openReleases")}</button>
             ${update.release?.url ? `<button class="secondary" data-action="update-open-release">${icon("list")}${t("updates.openThisRelease")}</button>` : ""}
           </div>
+          <p class="update-action-note">${isAssisted
+            ? escapeHtml(t("updates.assistedText"))
+            : escapeHtml(t("updates.autoText"))}</p>
         </article>
 
         ${appInfoCard}
@@ -3246,10 +3250,19 @@ function updatesTabV1() {
         <article class="settings-card vertical update-card update-preferences-card">
           <h2>${escapeHtml(t("updates.preferences"))}</h2>
           <div class="update-preferences">
-            <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> ${escapeHtml(t("updates.prefCheckStartup"))}</label>
-            <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> ${escapeHtml(t("updates.prefBeta"))}</label>
-            <label><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload === false ? "" : "checked"} ${settings.preferManual ? "disabled" : ""}> ${escapeHtml(t("updates.prefAutoDownload"))} <span>${escapeHtml(t("updates.prefAutoDownloadHelp"))}</span></label>
-            <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> ${escapeHtml(t("updates.prefManual"))}</label>
+            <div class="preference-item">
+              <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> ${escapeHtml(t("updates.prefCheckStartup"))}</label>
+            </div>
+            <div class="preference-item">
+              <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> ${escapeHtml(t("updates.prefBeta"))}</label>
+            </div>
+            <div class="preference-item">
+              <label><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload === false ? "" : "checked"} ${settings.preferManual ? "disabled" : ""}> ${escapeHtml(t("updates.prefAutoDownload"))}</label>
+              <p class="preference-note">${escapeHtml(t("updates.prefAutoDownloadHelp"))}</p>
+            </div>
+            <div class="preference-item">
+              <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> ${escapeHtml(t("updates.prefManual"))}</label>
+            </div>
           </div>
           ${update.ignoredVersion ? `<p class="muted">${escapeHtml(t("updates.ignored", { version: update.ignoredVersion }))}</p>` : ""}
           ${update.remindAfter ? `<p class="muted">${escapeHtml(t("updates.reminder", { date: updateDate(update.remindAfter) }))}</p>` : ""}

@@ -60,18 +60,15 @@ test("usa o tema do sistema quando explícito e dark como fallback seguro", () =
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
   assert.match(main, /loadFile\(paths\.renderer,\s*\{\s*query:\s*\{\s*bootTheme\s*\}\s*\}\)/);
   assert.match(main, /theme: resolveBootThemePreference\(saved\.theme \?\? defaultSettings\.theme\)/);
-  assert.match(main, /if \(saved\.theme && saved\.theme !== settings\.theme\) await writeJson\("settings\.json", settings\);/);
+  assert.match(main, /if \(languageResolution\.shouldPersist \|\| \(saved\.theme && saved\.theme !== settings\.theme\)\)\s*\{[\s\S]*?await writeJson\("settings\.json", settings\);/);
   assert.match(main, /theme: resolveBootThemePreference\(nextSettings\?\.theme \?\? current\.theme\)/);
 });
 
-test("anima o conteúdo na abertura sem substituir a proteção contra flash", () => {
+test("boot abre sem animação de entrada e preserva a proteção contra flash", () => {
   const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
-  assert.doesNotMatch(css, /#app\.window-enter|@keyframes window-enter/);
-  assert.match(css, /\.boot-card\.boot-card-enter\s*\{\s*animation:\s*boot-rise 420ms cubic-bezier\(0\.22, 1, 0\.36, 1\) 120ms both;/);
-  assert.match(css, /@keyframes boot-rise\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?scale\(0\.97\);[\s\S]*?opacity:\s*1;[\s\S]*?scale\(1\);/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.boot-card\.boot-card-enter\s*\{\s*animation:\s*none;/);
-  assert.match(main, /webContents\.on\("did-finish-load"[\s\S]*?classList\.remove\("boot-card-enter"\)[\s\S]*?offsetWidth[\s\S]*?classList\.add\("boot-card-enter"\)/);
+  assert.doesNotMatch(css, /#app\.window-enter|@keyframes window-enter|boot-card-enter|@keyframes boot-rise/);
+  assert.doesNotMatch(main, /boot-card-enter|classList\.add\("window-enter"\)/);
   assert.match(main, /mainWindow\.once\("ready-to-show",\s*\(\) => \{[\s\S]*?mainWindow\.show\(\);/);
   assert.match(main, /backgroundColor:\s*bootBackground/);
 });
