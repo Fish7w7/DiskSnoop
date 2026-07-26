@@ -11,6 +11,11 @@ if (!api) {
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 const SIGNABLE_EXTENSIONS = new Set([".exe", ".dll", ".msi", ".sys", ".cab", ".ocx"]);
+const ACCENT_PRESETS = [
+  "#2f80ff", "#ff2e97", "#00c2a8", "#ff6b35",
+  "#8b5cf6", "#f2c94c", "#e63946", "#38b000"
+];
+const { hexToRgb, rgbToCss, mixRgb } = window.diskSnoopColorUtils || {};
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
 let APP_VERSION_LABEL = "1.8.0-beta.1";
@@ -136,6 +141,10 @@ function normalizeTheme(settings) {
   normalized.theme = themeMessageKeys[requestedTheme]
     ? requestedTheme
     : legacyThemeMap[requestedTheme] || "dark";
+  const customAccent = typeof normalized.appearance?.customAccent === "string" && /^#[0-9a-f]{6}$/i.test(normalized.appearance.customAccent)
+    ? normalized.appearance.customAccent.toLowerCase()
+    : null;
+  normalized.appearance = { ...(normalized.appearance || {}), customAccent };
   if (!languageLabels[normalized.language]) normalized.language = "pt-BR";
   normalized.ignoredPaths = Array.isArray(normalized.ignoredPaths) ? normalized.ignoredPaths : [];
   normalized.includedPaths = Array.isArray(normalized.includedPaths) ? normalized.includedPaths : [];
@@ -592,8 +601,22 @@ function applyTheme() {
   const preference = themeMessageKeys[state.settings?.theme] ? state.settings.theme : "dark";
   const theme = preference === "system" ? "system" : preference;
   document.documentElement.dataset.theme = theme;
+  applyCustomAccent(state.settings?.appearance?.customAccent || null);
   try { localStorage.setItem("disksnoop-theme", theme); } catch {}
   rememberLanguage();
+}
+
+function applyCustomAccent(hex) {
+  const root = document.documentElement;
+  if (!hex) {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accentSoft");
+    return;
+  }
+  root.style.setProperty("--accent", hex);
+  const surfaceHex = getComputedStyle(root).getPropertyValue("--surface").trim();
+  const soft = mixRgb(hexToRgb(hex), hexToRgb(surfaceHex || "#ffffff"), 0.82);
+  root.style.setProperty("--accentSoft", rgbToCss(soft));
 }
 
 function setToast(messageOrOptions) {
@@ -2227,6 +2250,40 @@ function themeCardPicker(currentTheme) {
   `;
 }
 
+function accentPicker(currentAccent) {
+  return `
+    <div class="accent-picker">
+      ${ACCENT_PRESETS.map((hex) => `
+        <button
+          class="accent-swatch ${hex === currentAccent ? "is-active" : ""}"
+          data-action="select-accent"
+          data-value="${hex}"
+          style="background:${hex};"
+          aria-label="${hex}"
+          type="button"
+        ></button>
+      `).join("")}
+      <label class="accent-custom">
+        <input type="color" data-action="select-accent-custom" value="${currentAccent || "#2f80ff"}">
+        ${escapeHtml(t("settings.accentCustom"))}
+      </label>
+    </div>
+    <div class="accent-preview" data-accent-preview></div>
+    <div class="accent-warnings" data-accent-warnings></div>
+  `;
+}
+
+function selectAccent(hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return;
+  state.settings.appearance = {
+    ...(state.settings.appearance || {}),
+    customAccent: String(hex).toLowerCase()
+  };
+  applyCustomAccent(state.settings.appearance.customAccent);
+  persistSettingsSoon();
+  render();
+}
+
 function detailOverlay(title, content, hasSelection) {
   if (!state.detailOverlayOpen || !hasSelection) return "";
   const closeLabel = t("details.close");
@@ -3196,6 +3253,10 @@ function settingsTab() {
         <div><p>${escapeHtml(t("settings.currentTheme"))}</p><span>${escapeHtml(t("settings.themeHelp"))}</span></div>
         ${themeCardPicker(state.settings.theme)}
       </section>
+      <section class="settings-card vertical accent-settings-card">
+        <div><p>${escapeHtml(t("settings.accentLabel"))}</p><span>${escapeHtml(t("settings.accentHelp"))}</span></div>
+        ${accentPicker(state.settings.appearance?.customAccent || null)}
+      </section>
       <section class="settings-card">
         <div><p>${escapeHtml(t("settings.languageLabel"))}</p><span>${escapeHtml(t("settings.languageHelp"))}</span></div>
         ${selectControl("language", languageOptions, state.settings.language || "pt-BR")}
@@ -4135,6 +4196,9 @@ document.addEventListener("click", async (event) => {
     render();
     persistSettingsSoon();
   }
+  if (action === "select-accent") {
+    selectAccent(target.dataset.value);
+  }
   if (action === "overview-safe-plan") {
     const safePlan = visibleCandidates().filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");
     state.selectedIds.clear();
@@ -4523,6 +4587,10 @@ document.addEventListener("click", async (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-modal-input]")) {
     state.modal = { ...state.modal, value: event.target.value, error: "" };
+    return;
+  }
+  if (event.target.dataset.action === "select-accent-custom") {
+    selectAccent(event.target.value);
     return;
   }
   if (event.target.matches("select")) {

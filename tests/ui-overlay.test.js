@@ -67,6 +67,15 @@ test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
   assert.doesNotMatch(JSON.stringify(ptBR.messages) + JSON.stringify(enUS.messages), /Hacker|Neon/);
 });
 
+test("accent customizado aplica em tempo real e persiste separado do tema", () => {
+  assert.match(renderer, /const ACCENT_PRESETS = \[[\s\S]*?"#2f80ff"[\s\S]*?"#38b000"[\s\S]*?\];/);
+  assert.match(renderer, /function applyCustomAccent\(hex\)[\s\S]*?setProperty\("--accent", hex\)[\s\S]*?mixRgb\(hexToRgb\(hex\), hexToRgb\(surfaceHex \|\| "#ffffff"\), 0\.82\)/);
+  assert.match(renderer, /function selectAccent\(hex\)[\s\S]*?customAccent: String\(hex\)\.toLowerCase\(\)[\s\S]*?persistSettingsSoon\(\)/);
+  assert.match(renderer, /function applyTheme\(\)[\s\S]*?dataset\.theme = theme;[\s\S]*?applyCustomAccent\(state\.settings\?\.appearance\?\.customAccent \|\| null\);/);
+  assert.equal(ptBR.messages["settings.accentCustom"], "Personalizada");
+  assert.equal(enUS.messages["settings.accentCustom"], "Custom");
+});
+
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
   const finishStart = css.indexOf(':root[data-theme="dark"] .app-header');
   const finishEnd = css.indexOf("@media (max-width: 1100px)", finishStart);

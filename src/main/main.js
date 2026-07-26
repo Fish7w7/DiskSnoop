@@ -68,6 +68,9 @@ const defaultSettings = {
   settingsVersion: 2,
   theme: "light",
   language: "pt-BR",
+  appearance: {
+    customAccent: null
+  },
   largeFileSize: 1024 * 1024 * 1024,
   largeFolderSize: 2 * 1024 * 1024 * 1024,
   duplicateFileSize: 50 * 1024 * 1024,
@@ -139,6 +142,7 @@ async function getSettings() {
     settingsVersion: defaultSettings.settingsVersion,
     theme: resolveBootThemePreference(saved.theme ?? defaultSettings.theme),
     language: ["pt-BR", "en-US"].includes(saved.language) ? saved.language : defaultSettings.language,
+    appearance: normalizeAppearance(saved.appearance),
     ignoredPaths: Array.isArray(saved.ignoredPaths) ? saved.ignoredPaths : defaultSettings.ignoredPaths,
     includedPaths: Array.isArray(saved.includedPaths) ? saved.includedPaths : defaultSettings.includedPaths,
     update: {
@@ -153,6 +157,13 @@ async function getSettings() {
   };
   if (saved.theme && saved.theme !== settings.theme) await writeJson("settings.json", settings);
   return settings;
+}
+
+function normalizeAppearance(appearance) {
+  const customAccent = typeof appearance?.customAccent === "string" && /^#[0-9a-f]{6}$/i.test(appearance.customAccent)
+    ? appearance.customAccent.toLowerCase()
+    : null;
+  return { customAccent };
 }
 
 function runPowerShell(script, options = {}) {
@@ -1084,6 +1095,7 @@ ipcMain.handle("settings:save", async (_event, nextSettings) => {
     ...current,
     ...nextSettings,
     theme: resolveBootThemePreference(nextSettings?.theme ?? current.theme),
+    appearance: normalizeAppearance(nextSettings?.appearance ?? current.appearance),
     update: {
       ...current.update,
       ...(nextSettings?.update || {})
