@@ -84,7 +84,8 @@ test("seletor de tema usa cards com previews fixos dos cinco temas", () => {
 test("accent customizado aplica em tempo real e persiste separado do tema", () => {
   assert.match(renderer, /const ACCENT_PRESETS = \[[\s\S]*?"#2f80ff"[\s\S]*?"#38b000"[\s\S]*?\];/);
   assert.match(renderer, /function applyCustomAccent\(hex\)[\s\S]*?setProperty\("--accent", hex\)[\s\S]*?mixRgb\(hexToRgb\(hex\), hexToRgb\(surfaceHex \|\| "#ffffff"\), 0\.82\)/);
-  assert.match(renderer, /function selectAccent\(hex\)[\s\S]*?customAccent: String\(hex\)\.toLowerCase\(\)[\s\S]*?persistSettingsSoon\(\)/);
+  assert.match(renderer, /function updateAccentState\(hex\)[\s\S]*?customAccent: normalizedHex[\s\S]*?applyCustomAccent\(normalizedHex\)/);
+  assert.match(renderer, /function selectAccent\(hex, options = \{\}\)[\s\S]*?updateAccentState\(hex\)[\s\S]*?persistSettingsSoon\(\)/);
   assert.match(renderer, /function applyTheme\(\)[\s\S]*?dataset\.theme = theme;[\s\S]*?applyCustomAccent\(state\.settings\?\.appearance\?\.customAccent \|\| null\);/);
   assert.equal(ptBR.messages["settings.accentCustom"], "Personalizada");
   assert.equal(enUS.messages["settings.accentCustom"], "Custom");
@@ -126,13 +127,22 @@ test("accent avisa colisões com os tokens de status do tema ativo", () => {
 
 test("troca de accent oferece desfazer exato sem empilhar toasts", () => {
   assert.match(renderer, /let previousAccent = null;/);
-  assert.match(renderer, /function selectAccent\(hex\)[\s\S]*?previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;[\s\S]*?action: "undo-accent"[\s\S]*?actionLabel: t\("common\.undo"\)/);
+  assert.match(renderer, /function selectAccent\(hex, options = \{\}\)[\s\S]*?previousAccent = accentBeforeChange;[\s\S]*?action: "undo-accent"[\s\S]*?actionLabel: t\("common\.undo"\)/);
   assert.match(renderer, /if \(action === "undo-accent"\) \{[\s\S]*?customAccent: previousAccent[\s\S]*?applyCustomAccent\(previousAccent\);[\s\S]*?state\.toast = "";/);
   assert.match(renderer, /state\.toast = toast\.message \? toast : "";/);
   assert.equal(ptBR.messages["common.undo"], "Desfazer");
   assert.equal(enUS.messages["common.undo"], "Undo");
   assert.equal(ptBR.messages["settings.accentChangedToast"], "Cor de destaque alterada.");
   assert.equal(enUS.messages["settings.accentChangedToast"], "Accent color changed.");
+});
+
+test("arrastar no seletor nativo pré-visualiza sem renderizar até confirmar", () => {
+  assert.match(renderer, /let customAccentStartValue;/);
+  assert.match(renderer, /function previewCustomAccent\(hex\)[\s\S]*?updateAccentState\(hex\)[\s\S]*?warnings\.innerHTML = accentWarnings\(normalizedHex\)/);
+  const inputHandler = renderer.match(/document\.addEventListener\("input",[\s\S]*?\n\}\);/)?.[0] || "";
+  assert.match(inputHandler, /select-accent-custom"\) \{[\s\S]*?previewCustomAccent\(event\.target\.value\);/);
+  assert.doesNotMatch(inputHandler, /select-accent-custom"\) \{[\s\S]*?selectAccent\(event\.target\.value\);/);
+  assert.match(renderer, /document\.addEventListener\("change",[\s\S]*?select-accent-custom"\) \{[\s\S]*?selectAccent\(event\.target\.value, \{ previousAccent: accentBeforeChange \}\);/);
 });
 
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {

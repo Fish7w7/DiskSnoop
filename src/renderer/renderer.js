@@ -96,6 +96,7 @@ const state = {
 let lastRenderedTab = null;
 let pendingTableRefresh = 0;
 let previousAccent = null;
+let customAccentStartValue;
 const animatedMetricValues = new Map();
 const animatedMetricTargets = new Map();
 const metricAnimationFrames = new Map();
@@ -2334,14 +2335,40 @@ function accentPicker(currentAccent) {
   `;
 }
 
-function selectAccent(hex) {
-  if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return;
-  previousAccent = state.settings.appearance?.customAccent || null;
+function updateAccentState(hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return null;
+  const normalizedHex = String(hex).toLowerCase();
   state.settings.appearance = {
     ...(state.settings.appearance || {}),
-    customAccent: String(hex).toLowerCase()
+    customAccent: normalizedHex
   };
-  applyCustomAccent(state.settings.appearance.customAccent);
+  applyCustomAccent(normalizedHex);
+  return normalizedHex;
+}
+
+function previewCustomAccent(hex) {
+  if (customAccentStartValue === undefined) {
+    customAccentStartValue = state.settings.appearance?.customAccent || null;
+  }
+  const normalizedHex = updateAccentState(hex);
+  if (!normalizedHex) return;
+  const preview = document.querySelector("[data-accent-preview]");
+  const warnings = document.querySelector("[data-accent-warnings]");
+  if (preview) preview.style.background = normalizedHex;
+  if (warnings) warnings.innerHTML = accentWarnings(normalizedHex);
+  document.querySelectorAll('[data-action="select-accent"]').forEach((swatch) => {
+    swatch.classList.toggle("is-active", swatch.dataset.value === normalizedHex);
+  });
+}
+
+function selectAccent(hex, options = {}) {
+  const hasPreviousAccent = Object.prototype.hasOwnProperty.call(options, "previousAccent");
+  const accentBeforeChange = hasPreviousAccent
+    ? options.previousAccent
+    : state.settings.appearance?.customAccent || null;
+  const normalizedHex = updateAccentState(hex);
+  if (!normalizedHex) return;
+  previousAccent = accentBeforeChange;
   persistSettingsSoon();
   setToast({
     message: t("settings.accentChangedToast"),
@@ -4281,6 +4308,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "reset-accent") {
+    customAccentStartValue = undefined;
     state.settings.appearance = {
       ...(state.settings.appearance || {}),
       customAccent: null
@@ -4681,7 +4709,7 @@ document.addEventListener("input", (event) => {
     return;
   }
   if (event.target.dataset.action === "select-accent-custom") {
-    selectAccent(event.target.value);
+    previewCustomAccent(event.target.value);
     return;
   }
   if (event.target.matches("select")) {
@@ -4746,6 +4774,15 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("change", async (event) => {
+  if (event.target.dataset.action === "select-accent-custom") {
+    const accentBeforeChange = customAccentStartValue === undefined
+      ? state.settings.appearance?.customAccent || null
+      : customAccentStartValue;
+    customAccentStartValue = undefined;
+    selectAccent(event.target.value, { previousAccent: accentBeforeChange });
+    return;
+  }
+
   if (event.target.dataset.action === "drive-select") {
     state.selectedDrive = state.drives.find((drive) => drive.letter === event.target.value) || state.selectedDrive;
     render();
