@@ -59,6 +59,5 @@ contextBridge.exposeInMainWorld("diskScope", {
   onScanProgress: (callback) => ipcRenderer.on("scan:progress", (_event, payload) => callback(payload)),
   onScanDone: (callback) => ipcRenderer.on("scan:done", (_event, payload) => callback(payload)),
   onScanError: (callback) => ipcRenderer.on("scan:error", (_event, payload) => callback(payload)),
-  onUpdateState: (callback) => ipcRenderer.on("update:state", (_event, payload) => callback(payload)),
-  onWindowShown: (callback) => ipcRenderer.on("window:shown", () => callback())
+  onUpdateState: (callback) => ipcRenderer.on("update:state", (_event, payload) => callback(payload))
 });

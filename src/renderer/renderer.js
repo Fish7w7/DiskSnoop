@@ -1,8 +1,5 @@
 const api = window.diskScope;
 const overviewComparison = window.diskSnoopOverviewComparison;
-api?.onWindowShown?.(() => {
-  requestAnimationFrame(() => document.getElementById("app")?.classList.add("window-enter"));
-});
 if (!api) {
   const bootStatus = document.querySelector("[data-boot-status]");
   if (bootStatus) {

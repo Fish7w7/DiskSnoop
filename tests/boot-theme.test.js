@@ -67,10 +67,10 @@ test("anima o conteúdo na abertura sem substituir a proteção contra flash", (
   const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
   assert.match(css, /#app\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*none;/);
-  assert.match(css, /#app\.window-enter\s*\{\s*animation:\s*window-enter 200ms ease-out forwards;/);
-  assert.match(css, /@keyframes window-enter\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?transform:\s*scale\(0\.98\);[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*scale\(1\);/);
+  assert.match(css, /#app\.window-enter\s*\{\s*animation:\s*window-enter 280ms ease-out 80ms both;/);
+  assert.match(css, /@keyframes window-enter\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?transform:\s*translateY\(6px\) scale\(0\.96\);[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*scale\(1\);/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?#app\s*\{\s*animation:\s*none;/);
-  assert.match(main, /mainWindow\.once\("ready-to-show",\s*\(\) => \{[\s\S]*?mainWindow\.show\(\);/);
-  assert.match(main, /mainWindow\.show\(\);[\s\S]*?mainWindow\.webContents\.send\("window:shown"\);/);
+  assert.match(main, /mainWindow\.once\("ready-to-show",\s*async \(\) => \{[\s\S]*?executeJavaScript\([\s\S]*?classList\.add\("window-enter"\)[\s\S]*?mainWindow\.show\(\);/);
+  assert.doesNotMatch(main, /webContents\.send\("window:shown"\)/);
   assert.match(main, /backgroundColor:\s*bootBackground/);
 });

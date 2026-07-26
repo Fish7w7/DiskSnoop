@@ -1072,11 +1072,14 @@ async function createWindow() {
   mainWindow.on("focus", () => {
     taskbarBadge.clear(mainWindow);
   });
-  mainWindow.once("ready-to-show", () => {
-    if (!mainWindow?.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.webContents.send("window:shown");
-    }
+  mainWindow.once("ready-to-show", async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      await mainWindow.webContents.executeJavaScript(
+        'document.getElementById("app")?.classList.add("window-enter")'
+      );
+    } catch {}
+    if (!mainWindow.isDestroyed()) mainWindow.show();
   });
 
   await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
