@@ -15,7 +15,8 @@ const ACCENT_PRESETS = [
   "#2f80ff", "#ff2e97", "#00c2a8", "#ff6b35",
   "#8b5cf6", "#f2c94c", "#e63946", "#38b000"
 ];
-const { hexToRgb, rgbToCss, mixRgb, contrastRatio } = window.diskSnoopColorUtils || {};
+const STATUS_COLLISION_THRESHOLD = 60;
+const { hexToRgb, rgbToCss, mixRgb, contrastRatio, rgbDistance } = window.diskSnoopColorUtils || {};
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
 let APP_VERSION_LABEL = "1.8.0-beta.1";
@@ -2268,12 +2269,36 @@ function checkAccentWarnings(hex, tokens) {
   return warnings;
 }
 
+function checkStatusCollision(hex, tokens) {
+  const collisions = [];
+  const statusTokens = {
+    danger: tokens.danger,
+    warning: tokens.warning,
+    success: tokens.success
+  };
+  for (const [statusName, statusHex] of Object.entries(statusTokens)) {
+    if (rgbDistance(hex, statusHex) < STATUS_COLLISION_THRESHOLD) {
+      collisions.push(statusName);
+    }
+  }
+  return collisions;
+}
+
 function accentWarnings(currentAccent) {
   if (!currentAccent) return "";
-  return checkAccentWarnings(currentAccent, currentThemeColorTokens())
+  const tokens = currentThemeColorTokens();
+  const warnings = [
+    ...checkAccentWarnings(currentAccent, tokens),
+    ...checkStatusCollision(currentAccent, tokens).map((status) => ({
+      type: "status",
+      messageKey: "settings.accentWarningStatus",
+      values: { status: t(`status.${status}`) }
+    }))
+  ];
+  return warnings
     .map((warning) => `
       <p class="accent-warning" data-warning-type="${warning.type}">
-        ${icon("warning")}${escapeHtml(t(warning.messageKey))}
+        ${icon("warning")}${escapeHtml(t(warning.messageKey, warning.values))}
       </p>
     `)
     .join("");

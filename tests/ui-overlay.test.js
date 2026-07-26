@@ -89,11 +89,25 @@ test("restaurar accent remove apenas a cor customizada e preserva o tema", () =>
 
 test("accent avisa contraste de interface abaixo de 3:1 sem bloquear a aplicação", () => {
   assert.match(renderer, /function checkAccentWarnings\(hex, tokens\) \{[\s\S]*?contrastRatio\(hex, tokens\.background\) < 3[\s\S]*?type: "contrast"/);
-  assert.match(renderer, /function accentWarnings\(currentAccent\)[\s\S]*?checkAccentWarnings\(currentAccent, currentThemeColorTokens\(\)\)/);
+  assert.match(renderer, /function accentWarnings\(currentAccent\)[\s\S]*?const tokens = currentThemeColorTokens\(\);[\s\S]*?checkAccentWarnings\(currentAccent, tokens\)/);
   assert.match(renderer, /data-accent-warnings>\$\{accentWarnings\(currentAccent\)\}/);
   assert.match(css, /\.accent-warning\s*\{[\s\S]*?color:\s*var\(--textMuted\);/);
   assert.equal(ptBR.messages["settings.accentWarningContrast"], "Essa cor pode ficar difícil de enxergar no tema atual.");
   assert.equal(enUS.messages["settings.accentWarningContrast"], "This color may be hard to see in the current theme.");
+});
+
+test("accent avisa colisões com os tokens de status do tema ativo", () => {
+  assert.match(renderer, /const STATUS_COLLISION_THRESHOLD = 60;/);
+  assert.match(renderer, /function checkStatusCollision\(hex, tokens\)[\s\S]*?danger: tokens\.danger[\s\S]*?warning: tokens\.warning[\s\S]*?success: tokens\.success/);
+  assert.match(renderer, /rgbDistance\(hex, statusHex\) < STATUS_COLLISION_THRESHOLD/);
+  assert.match(renderer, /checkStatusCollision\(currentAccent, tokens\)[\s\S]*?t\(`status\.\$\{status\}`\)/);
+  assert.equal(ptBR.messages["status.danger"], "perigo");
+  assert.equal(ptBR.messages["status.warning"], "aviso");
+  assert.equal(ptBR.messages["status.success"], "sucesso");
+  assert.equal(
+    enUS.messages["settings.accentWarningStatus"],
+    "This color is similar to the app's {status} color, which may cause confusion."
+  );
 });
 
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
