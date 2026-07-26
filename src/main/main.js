@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, nativeTheme, nativeImage } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
@@ -9,6 +9,7 @@ const { fork } = require("node:child_process");
 const { createInstalledAppsInventory } = require("./installed-apps");
 const { createAuthenticodeVerifier } = require("./authenticode");
 const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
+const { createTaskbarBadgeController } = require("./taskbar-badge");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -43,7 +44,8 @@ app.setAppUserModelId("com.disksnoop.app");
 const paths = {
   scanner: path.join(__dirname, "..", "scanner", "scanner.js"),
   renderer: path.join(__dirname, "..", "renderer", "index.html"),
-  icon: path.join(__dirname, "..", "assets", "app-icon.ico")
+  icon: path.join(__dirname, "..", "assets", "app-icon.ico"),
+  badgeScanComplete: path.join(__dirname, "..", "assets", "badge-scan-complete.png")
 };
 
 function dataFile(name) {
@@ -59,6 +61,14 @@ function loadRendererLocale(locale) {
     return { messages: {} };
   }
 }
+
+const taskbarBadge = createTaskbarBadgeController({
+  nativeImage,
+  iconPath: paths.badgeScanComplete,
+  translate(locale, key) {
+    return loadRendererLocale(locale)?.messages?.[key] || "";
+  }
+});
 
 ipcMain.on("locale:load", (event, locale) => {
   event.returnValue = loadRendererLocale(locale);
@@ -1059,6 +1069,9 @@ async function createWindow() {
     }
   });
   mainWindow.setIcon(paths.icon);
+  mainWindow.on("focus", () => {
+    taskbarBadge.clear(mainWindow);
+  });
   mainWindow.once("ready-to-show", () => {
     if (!mainWindow?.isDestroyed()) mainWindow.show();
   });
@@ -1536,6 +1549,7 @@ ipcMain.handle("scan:start", async (_event, options) => {
       });
       await writeJson("history.json", history.slice(0, 50));
       send("scan:done", message.result);
+      taskbarBadge.markScanCompleteIfUnfocused(mainWindow, settings.language);
       activeScan = null;
       return;
     }

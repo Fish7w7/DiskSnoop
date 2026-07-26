@@ -155,6 +155,7 @@
     "updates.localChangelog": "Mostrando notas locais da versão instalada. Quando uma release publicada trouxer changelog, ela aparece aqui automaticamente.",
     "updates.noChangelog": "Nenhum changelog disponível ainda. Se existir uma release publicada, você ainda pode abrir a página de releases para revisar manualmente.",
     "updates.preferences": "Preferências",
+    "update.scanCompleteBadgeDescription": "Scan concluído",
     "updates.prefCheckStartup": "Verificar atualização ao abrir",
     "updates.prefBeta": "Participar de versões beta",
     "updates.prefManual": "Usar atualização manual mesmo no instalador",
