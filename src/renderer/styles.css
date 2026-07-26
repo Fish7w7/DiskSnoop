@@ -201,7 +201,12 @@ body {
 }
 
 #app {
-  animation: window-enter 200ms ease-out;
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+#app.window-enter {
+  animation: window-enter 200ms ease-out forwards;
 }
 
 @keyframes window-enter {
@@ -242,6 +247,8 @@ body,
 @media (prefers-reduced-motion: reduce) {
   #app {
     animation: none;
+    opacity: 1;
+    transform: none;
   }
 
   body,

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("diskScope", {
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
   maximizeWindow: () => ipcRenderer.invoke("window:maximizeToggle"),
   closeWindow: () => ipcRenderer.invoke("window:close"),
+  testTaskbarBadge: () => ipcRenderer.invoke("taskbar:testBadge"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   resetSettings: () => ipcRenderer.invoke("settings:reset"),
@@ -58,5 +59,6 @@ contextBridge.exposeInMainWorld("diskScope", {
   onScanProgress: (callback) => ipcRenderer.on("scan:progress", (_event, payload) => callback(payload)),
   onScanDone: (callback) => ipcRenderer.on("scan:done", (_event, payload) => callback(payload)),
   onScanError: (callback) => ipcRenderer.on("scan:error", (_event, payload) => callback(payload)),
-  onUpdateState: (callback) => ipcRenderer.on("update:state", (_event, payload) => callback(payload))
+  onUpdateState: (callback) => ipcRenderer.on("update:state", (_event, payload) => callback(payload)),
+  onWindowShown: (callback) => ipcRenderer.on("window:shown", () => callback())
 });

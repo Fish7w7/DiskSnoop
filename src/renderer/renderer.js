@@ -1,4 +1,8 @@
 const api = window.diskScope;
+const overviewComparison = window.diskSnoopOverviewComparison;
+api?.onWindowShown?.(() => {
+  requestAnimationFrame(() => document.getElementById("app")?.classList.add("window-enter"));
+});
 if (!api) {
   const bootStatus = document.querySelector("[data-boot-status]");
   if (bootStatus) {
@@ -98,9 +102,6 @@ let pendingTableRefresh = 0;
 let previousAccent = null;
 let customAccentStartValue;
 let accentResetUndoConsumedFor = null;
-const animatedMetricValues = new Map();
-const animatedMetricTargets = new Map();
-const metricAnimationFrames = new Map();
 
 const tabs = [
   ["overview", "nav.overview", "home"],
@@ -326,56 +327,6 @@ function applyRenderedTranslations(root) {
 
 function formatCount(value) {
   return Number(value || 0).toLocaleString(currentLanguage());
-}
-
-function animateMetricValue(elementId, targetValue, formatFn) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-
-  const target = Number(targetValue || 0);
-  const startValue = animatedMetricValues.get(elementId) ?? 0;
-  const previousTarget = animatedMetricTargets.get(elementId);
-  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const existingFrame = metricAnimationFrames.get(elementId);
-  if (existingFrame) cancelAnimationFrame(existingFrame);
-
-  if (prefersReducedMotion || previousTarget === target || startValue === target) {
-    element.textContent = formatFn(target);
-    animatedMetricValues.set(elementId, target);
-    animatedMetricTargets.set(elementId, target);
-    metricAnimationFrames.delete(elementId);
-    return;
-  }
-
-  animatedMetricTargets.set(elementId, target);
-  element.textContent = formatFn(startValue);
-  const duration = 600;
-  const startTime = performance.now();
-
-  function tick(now) {
-    const progress = Math.min(1, (now - startTime) / duration);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = Math.round(startValue + (target - startValue) * eased);
-    element.textContent = formatFn(current);
-    animatedMetricValues.set(elementId, current);
-    if (progress < 1) {
-      metricAnimationFrames.set(elementId, requestAnimationFrame(tick));
-    } else {
-      animatedMetricValues.set(elementId, target);
-      metricAnimationFrames.delete(elementId);
-    }
-  }
-
-  metricAnimationFrames.set(elementId, requestAnimationFrame(tick));
-}
-
-function animateOverviewMetrics() {
-  if (state.screen !== "app" || state.tab !== "overview" || !state.scanResult) return;
-  animateMetricValue("metric-safe-space", safeRecoverableTotal(), compactBytes);
-  animateMetricValue("metric-reviewable-space", totalReviewable(), compactBytes);
-  animateMetricValue("metric-candidates", visibleCandidates().length, formatCount);
-  animateMetricValue("metric-leftovers", possibleLeftoversCount(), formatCount);
-  animateMetricValue("metric-files", state.scanResult.files, formatCount);
 }
 
 function formatBytes(bytes = 0) {
@@ -981,7 +932,10 @@ function disksScreen() {
           </div>
           <div class="button-row">
             ${hasCachedScan ? `<button class="secondary" data-action="load-cached-scan">${escapeHtml(t("disks.lastScan"))}</button>` : ""}
-            ${state.isPackaged ? "" : `<button class="secondary" data-action="load-test-scan">${escapeHtml(t("disks.testBypass"))}</button>`}
+            ${state.isPackaged ? "" : `
+              <button class="secondary" data-action="load-test-scan">${escapeHtml(t("disks.testBypass"))}</button>
+              <button class="secondary" data-action="test-taskbar-badge">${icon("check")}${escapeHtml(t("disks.testTaskbarBadge"))}</button>
+            `}
           </div>
         </div>
         <section class="drive-grid">
@@ -1262,6 +1216,7 @@ function buildScanComparison(current, previous) {
   if (!current?.id || !previous?.id) return null;
   const now = scanMetrics(current);
   const before = scanMetrics(previous);
+  const reviewableDelta = now.reviewableBytes - before.reviewableBytes;
   const categoryRows = [...now.categories.entries()]
     .map(([name, size]) => {
       const previousSize = before.categories.get(name) || 0;
@@ -1274,7 +1229,9 @@ function buildScanComparison(current, previous) {
     previousId: previous.id,
     previousDate: previous.finishedAt,
     safeDelta: now.safeBytes - before.safeBytes,
-    reviewableDelta: now.reviewableBytes - before.reviewableBytes,
+    reviewableDelta,
+    reviewableStable: overviewComparison.isReviewableDeltaStable(reviewableDelta, now.reviewableBytes),
+    reviewableNoiseThreshold: overviewComparison.reviewableNoiseThreshold(now.reviewableBytes),
     duplicateDelta: now.duplicateBytes - before.duplicateBytes,
     candidateDelta: now.candidates - before.candidates,
     categoryRows
@@ -1309,12 +1266,15 @@ function scanComparisonPanel() {
       </section>
     `;
   }
+  const reviewableSummary = comparison.reviewableStable
+    ? t("overview.reviewableStable")
+    : t("overview.reviewableDelta", { value: signedBytes(comparison.reviewableDelta) });
   return `
     <section class="overview-comparison">
       <span class="mini-icon">${icon("clock")}</span>
       <div>
         <strong>Desde ${escapeHtml(relativeDate(comparison.previousDate))}</strong>
-        <p>${signedBytes(comparison.reviewableDelta)} revisáveis · ${signedBytes(comparison.safeDelta)} no plano seguro · ${signedCount(comparison.candidateDelta)} candidatos</p>
+        <p>${escapeHtml(reviewableSummary)} · ${escapeHtml(t("overview.safePlanDelta", { value: signedBytes(comparison.safeDelta) }))} · ${escapeHtml(t("overview.candidateDelta", { value: signedCount(comparison.candidateDelta) }))}</p>
       </div>
     </section>
   `;
@@ -3479,7 +3439,6 @@ function render() {
       nextContent.classList.add("tab-enter");
     }
   }
-  animateOverviewMetrics();
   const detailPanel = $(".detail-overlay-panel");
   if (detailPanel) detailPanel.focus({ preventScroll: true });
   lastRenderedTab = state.screen === "app" ? state.tab : null;
@@ -4179,6 +4138,10 @@ document.addEventListener("click", async (event) => {
     state.selectedIds.clear();
     localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
     setToast("Bypass de teste carregado.");
+  }
+  if (action === "test-taskbar-badge") {
+    const shown = await api.testTaskbarBadge();
+    if (!shown) setToast(t("disks.testTaskbarBadgeFailed"));
   }
   if (action === "new-scan") {
     if (state.screen === "app") {

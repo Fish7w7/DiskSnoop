@@ -1073,7 +1073,10 @@ async function createWindow() {
     taskbarBadge.clear(mainWindow);
   });
   mainWindow.once("ready-to-show", () => {
-    if (!mainWindow?.isDestroyed()) mainWindow.show();
+    if (!mainWindow?.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.webContents.send("window:shown");
+    }
   });
 
   await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
@@ -1101,6 +1104,13 @@ ipcMain.handle("window:maximizeToggle", async () => {
   return true;
 });
 ipcMain.handle("window:close", async () => mainWindow?.close());
+ipcMain.handle("taskbar:testBadge", async () => {
+  if (app.isPackaged || !mainWindow || mainWindow.isDestroyed()) return false;
+  const settings = await getSettings();
+  const shown = taskbarBadge.showForTesting(mainWindow, settings.language);
+  if (shown) mainWindow.minimize();
+  return shown;
+});
 ipcMain.handle("settings:get", async () => getSettings());
 ipcMain.handle("settings:save", async (_event, nextSettings) => {
   const current = await getSettings();
