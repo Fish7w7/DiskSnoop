@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 
 const {
   REVIEWABLE_NOISE_FLOOR_BYTES,
@@ -23,4 +26,13 @@ test("usa 0,5% quando o total revisável torna o percentual maior", () => {
   assert.equal(reviewableNoiseThreshold(currentReviewable), currentReviewable * 0.005);
   assert.equal(isReviewableDeltaStable(100 * MB, currentReviewable), true);
   assert.equal(isReviewableDeltaStable(103 * MB, currentReviewable), false);
+});
+
+test("não vaza declaração lexical que impeça o renderer de carregar", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "overview-comparison.js"), "utf8");
+  const context = vm.createContext({ window: {} });
+  vm.runInContext(source, context);
+  assert.doesNotThrow(() => {
+    vm.runInContext("const overviewComparison = window.diskSnoopOverviewComparison;", context);
+  });
 });
