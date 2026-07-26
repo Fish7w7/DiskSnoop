@@ -3535,6 +3535,38 @@ input[type="checkbox"] {
 
 .scan-card .progress {
   height: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-card .progress-fill {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-card .progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, white 35%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: progress-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-card .progress-fill::after {
+    animation: none;
+  }
 }
 
 .scan-grid {

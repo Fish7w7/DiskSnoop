@@ -161,3 +161,11 @@ test("count-up da Overview persiste valores fora do state e não reinicia no mes
   }
   assert.match(renderer, /animateOverviewMetrics\(\);[\s\S]*?const detailPanel/);
 });
+
+test("barra de scan aplica shimmer somente no preenchimento e respeita movimento reduzido", () => {
+  assert.match(renderer, /function progressBar\(percent\)[\s\S]*?class="progress-fill"/);
+  assert.match(css, /\.scan-card \.progress-fill::after\s*\{[\s\S]*?animation:\s*progress-shimmer 1\.6s ease-in-out infinite;/);
+  assert.match(css, /@keyframes progress-shimmer\s*\{[\s\S]*?background-position:\s*200% 0;[\s\S]*?background-position:\s*-200% 0;/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.scan-card \.progress-fill::after\s*\{[\s\S]*?animation:\s*none;/);
+  assert.equal((css.match(/\.scan-card \.progress-fill::after/g) || []).length, 2);
+});

@@ -688,7 +688,7 @@ function confirmModal(options) {
 }
 
 function progressBar(percent) {
-  return `<div class="progress"><span style="width:${Math.max(0, Math.min(100, percent))}%"></span></div>`;
+  return `<div class="progress"><span class="progress-fill" style="width:${Math.max(0, Math.min(100, percent))}%"></span></div>`;
 }
 
 function badge(label, kind = "low") {
