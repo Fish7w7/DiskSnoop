@@ -1,21 +1,23 @@
 # DiskSnoop
 
-> App desktop para Windows que descobre onde o espaço do SSD/HD está sendo consumido — com quarentena antes de qualquer exclusão definitiva.
+> Aplicativo para Windows que mostra o que está ocupando espaço no SSD ou HD e permite revisar os itens antes de qualquer exclusão definitiva.
 
-![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows\&logoColor=white)
 ![GitHub release](https://img.shields.io/github/v/release/Fish7w7/DiskSnoop)
 ![GitHub releases](https://img.shields.io/github/downloads/Fish7w7/DiskSnoop/total)
 
 ## Download
 
-| Tipo | Link |
-|------|------|
-| 🖥️ Instalador (recomendado) | [Baixar na versão mais recente](https://github.com/Fish7w7/DiskSnoop/releases/latest) |
-| 📦 Portable | [Baixar na versão mais recente](https://github.com/Fish7w7/DiskSnoop/releases/latest) |
+[**Baixar a versão mais recente**](https://github.com/Fish7w7/DiskSnoop/releases/latest)
 
-> ⚠️ O app não tem assinatura de código. O Windows pode exibir aviso de app desconhecido — isso é esperado.
+Na página da release, escolha:
 
-> Requer Windows 10 ou superior, em sistema 64 bits.
+* **Setup** — instalador recomendado.
+* **Portable** — versão que funciona sem instalação.
+
+> ⚠️ O aplicativo não possui assinatura de código. O Windows pode exibir um aviso de aplicativo desconhecido ao abrir o instalador ou a versão portable.
+
+> Requer Windows 10 ou superior em sistema 64 bits.
 
 ---
 
@@ -25,56 +27,115 @@
 
 ## O que ele faz
 
-O DiskSnoop analisa seus discos, classifica pastas e arquivos por tamanho, explica por que cada item apareceu e move candidatos para **quarentena** antes de qualquer remoção. Nada é apagado automaticamente.
+O DiskSnoop analisa seus discos, classifica pastas e arquivos por tamanho, explica por que cada item apareceu e move candidatos para a **quarentena** antes da remoção definitiva.
+
+Nenhum arquivo encontrado durante a análise é excluído automaticamente.
 
 ## Recursos
 
-**✨ Interface e revisão**
-Cinco temas — Claro, Escuro, Papel, Grafite e Sistema — com inicialização já na cor correta. Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps abrem detalhes sob demanda em um painel sobreposto, deixando a lista inteira disponível quando ele está fechado.
+### ✨ Interface e aparência
 
-**🔍 Análise de disco**
-Scanner em processo separado com progresso, pausa e cancelamento. Ranking das maiores pastas, aba de arquivos grandes e relatório com duração, contagens e itens sem acesso.
+Cinco temas disponíveis: Claro, Escuro, Papel, Grafite e Sistema.
 
-**🧹 Limpeza inteligente**
-Candidatos para `node_modules`, `.venv`, `dist`, `build`, `.cache`, instaladores antigos, downloads antigos, logs e temporários. Duplicados verificados por nome, tamanho e hash SHA-256 configurável. Sobras de apps em AppData, ProgramData e Program Files com abordagem conservadora.
+A cor de destaque pode ser escolhida separadamente do tema, entre opções prontas ou uma cor personalizada.
 
-**🗂️ Quarentena**
-Itens movidos para quarentena ficam fora do caminho original com metadados para restauração. Você decide quando excluir permanentemente — isso sempre exige confirmação explícita. Quarentena no mesmo disco é recomendada para pastas grandes (evita cópia antes da remoção).
+As telas de Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de Apps exibem detalhes em um painel sobreposto, sem tirar o usuário da lista principal.
 
-**📋 Histórico e configurações**
-Histórico de scans e ações com snapshots carregáveis e gráfico de linhas para comparar espaço revisável e espaço liberado. Configurações de aparência, limites, detectores, escopo, pastas ignoradas e local da quarentena.
+### 🔍 Análise de disco
 
-**💬 Ajuda para decidir**
-Pastas grandes, candidatos, duplicados e sobras de apps permitem copiar uma dúvida pronta com caminho, tamanho, data, categoria, motivo e contexto de segurança. Executáveis e bibliotecas compatíveis também podem ter a assinatura Authenticode verificada sob demanda.
+O scanner funciona em um processo separado e permite acompanhar o progresso, pausar ou cancelar a análise.
 
-**🔄 Atualização**
-Verificação de updates no GitHub Releases com changelog, opção de lembrar depois e ignorar versão. No instalador, o download automático vem ativo por padrão — o reinício sempre exige confirmação. O portable usa fluxo assistido.
+Os resultados incluem:
 
-**🌐 Idioma**
-Interface bilíngue em Português (Brasil) e English, configurável nas preferências.
+* ranking das maiores pastas;
+* lista de arquivos grandes;
+* duração da análise;
+* quantidade de itens encontrados;
+* arquivos e pastas que não puderam ser acessados.
+
+### 🧹 Limpeza inteligente
+
+O DiskSnoop identifica possíveis candidatos de limpeza, como:
+
+* `node_modules`;
+* `.venv`;
+* `dist` e `build`;
+* caches;
+* instaladores antigos;
+* downloads antigos;
+* logs e arquivos temporários.
+
+Arquivos duplicados são comparados por nome, tamanho e conteúdo.
+
+A busca por sobras de aplicativos analisa pastas comuns do Windows com uma abordagem conservadora.
+
+### 🗂️ Quarentena
+
+Os itens selecionados podem ser movidos para uma quarentena antes da exclusão definitiva.
+
+Enquanto estiverem na quarentena, eles podem ser restaurados para o local original. A exclusão permanente sempre exige confirmação do usuário.
+
+Para pastas grandes, é recomendado manter a quarentena no mesmo disco para evitar cópias demoradas.
+
+### 📋 Histórico e configurações
+
+O histórico registra análises e ações realizadas no aplicativo.
+
+Também é possível carregar resultados anteriores e acompanhar o espaço identificado e liberado ao longo do tempo.
+
+As configurações permitem ajustar:
+
+* aparência;
+* limites de tamanho;
+* tipos de detecção;
+* locais analisados;
+* pastas ignoradas;
+* localização da quarentena.
+
+### 💬 Ajuda para decidir
+
+Pastas grandes, candidatos, duplicados e sobras de aplicativos permitem copiar um resumo com informações como caminho, tamanho, data, categoria e motivo da detecção.
+
+Isso facilita pesquisar ou pedir ajuda antes de remover um item desconhecido.
+
+Executáveis e bibliotecas compatíveis também podem ter a assinatura digital verificada.
+
+### 🔄 Atualizações
+
+O DiskSnoop verifica novas versões pelo GitHub Releases e exibe o changelog antes da atualização.
+
+No instalador, o download automático pode ser feito pelo próprio aplicativo, mas o reinício sempre exige confirmação.
+
+A versão portable utiliza um processo de atualização assistida.
+
+### 🌐 Idiomas
+
+A interface está disponível em:
+
+* Português do Brasil;
+* Inglês.
+
+O idioma pode ser alterado nas configurações.
 
 ## Segurança
 
-- Itens sensíveis do Windows aparecem no mapa de uso, mas não entram como candidatos normais de limpeza.
-- Se a descoberta de pacotes da Microsoft Store falhar, dados de aplicativos ficam bloqueados por padrão (fail closed).
-- O inventário AppX é consultado uma vez por sessão e reutilizado durante a análise.
-- Mover para quarentena preserva metadados para restauração completa.
-- A exclusão permanente só acontece por ação explícita do usuário.
-- Ações em lote podem solicitar a criação de um ponto de restauração do Windows quando o recurso estiver disponível.
-- Movimentos, restaurações, exclusões e tentativas bloqueadas são registrados em `audit-log.jsonl` na pasta de dados do app.
-- Updates não são aplicados durante scan ativo ou ações de quarentena em andamento.
-- Configurações, histórico, snapshots e quarentena ficam na pasta local do usuário e não são apagados por updates ou uninstall.
+* Arquivos e pastas sensíveis do Windows podem aparecer no mapa de uso, mas não entram normalmente como candidatos de limpeza.
+* Nenhum item detectado pela análise é excluído automaticamente.
+* A exclusão permanente sempre exige uma ação explícita do usuário.
+* Itens movidos para a quarentena mantêm as informações necessárias para restauração.
+* Ações em lote podem oferecer a criação de um ponto de restauração do Windows quando o recurso estiver disponível.
+* Atualizações não são aplicadas durante uma análise ou enquanto ações de quarentena estão em andamento.
+* Configurações, histórico e quarentena não são removidos durante atualizações normais do aplicativo.
 
-> Quando origem e quarentena ficam em discos diferentes, pastas grandes podem ser bloqueadas para evitar cópia parcial seguida de remoção. Arquivos ainda podem ser movidos entre discos, mas passam por cópia temporária com verificação de tamanho antes da remoção da origem.
+> Quando a origem e a quarentena estão em discos diferentes, pastas muito grandes podem ser bloqueadas para evitar uma cópia incompleta. Arquivos menores podem ser movidos entre discos com verificação antes da remoção da origem.
 
 ## Limites conhecidos
 
-- O hash de duplicados só é calculado para grupos candidatos; arquivos bloqueados ou sem permissão podem ficar sem verificação.
-- Algumas pastas em `ProgramData`, `Program Files` ou `Windows` podem exigir permissão de administrador.
-- A tela de sobras de apps é conservadora e pode mostrar pastas que ainda pertencem a apps instalados.
-- O auto-update do instalador depende de releases com `latest.yml` e `.blockmap` e da dependência `electron-updater` no build.
-- O portable não substitui automaticamente o executável aberto; usa atualização assistida.
-- Algumas mensagens de erro do sistema operacional podem aparecer no idioma original do Windows.
+* Arquivos bloqueados ou sem permissão podem não ser analisados completamente.
+* Algumas pastas em `ProgramData`, `Program Files` ou `Windows` podem exigir permissão de administrador.
+* A detecção de sobras de aplicativos é conservadora e pode mostrar pastas que ainda pertencem a programas instalados.
+* A versão portable não consegue substituir automaticamente o executável enquanto ele estiver aberto.
+* Algumas mensagens de erro do Windows podem aparecer no idioma original do sistema.
 
 ---
 
@@ -105,35 +166,45 @@ npm install
 npm run dist
 ```
 
-O instalador NSIS e o portable serão gerados em `release/`. Para gerar apenas o portable:
+O instalador NSIS e o portable serão gerados em `release/`.
+
+Para gerar apenas o portable:
 
 ```powershell
 npm run dist:portable
 ```
 
-O setup instala em `%LOCALAPPDATA%\Programs\DiskSnoop` por usuário atual, sem pedir permissão de administrador.
+O instalador é colocado em `%LOCALAPPDATA%\Programs\DiskSnoop` para o usuário atual, sem exigir permissão de administrador.
 
 ### Publicar no GitHub Releases
 
 1. Confirme a versão em `package.json`.
+
 2. Rode as validações:
+
    ```powershell
    npm run check
    npm test
    ```
+
 3. Gere os artefatos:
+
    ```powershell
    npm run dist
    ```
-4. Crie e envie a tag:
-   ```powershell
-   git tag v1.7.0
-   git push origin v1.7.0
-   ```
-5. Anexe estes arquivos de `release/` na release do GitHub:
-   - `DiskSnoop-Setup-1.7.0-x64.exe`
-   - `DiskSnoop-Setup-1.7.0-x64.exe.blockmap`
-   - `latest.yml`
-   - `DiskSnoop-Portable-1.7.0-x64.exe`
 
-> Versões intermediárias não precisam ser publicadas retroativamente. O `electron-updater` pode atualizar diretamente da 1.5.0 para a 1.7.0, desde que a release mais recente inclua `latest.yml`, o instalador e o arquivo `.blockmap` correspondentes.
+4. Crie e envie a tag:
+
+   ```powershell
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+5. Anexe os seguintes arquivos da pasta `release/`:
+
+   * `DiskSnoop-Setup-X.Y.Z-x64.exe`
+   * `DiskSnoop-Setup-X.Y.Z-x64.exe.blockmap`
+   * `latest.yml`
+   * `DiskSnoop-Portable-X.Y.Z-x64.exe`
+
+> O `electron-updater` pode atualizar diretamente de uma versão antiga para a mais recente, desde que a release inclua o instalador, o `latest.yml` e o `.blockmap` correspondentes.
