@@ -95,6 +95,7 @@ const state = {
 
 let lastRenderedTab = null;
 let pendingTableRefresh = 0;
+let previousAccent = null;
 const animatedMetricValues = new Map();
 const animatedMetricTargets = new Map();
 const metricAnimationFrames = new Map();
@@ -632,6 +633,7 @@ function setToast(messageOrOptions) {
       if (state.toast === toast) {
         state.toast = "";
         if (toast.action === "undo-quarantine") state.quarantineUndo = null;
+        if (toast.action === "undo-accent") previousAccent = null;
         render();
       }
     }, duration);
@@ -2334,12 +2336,18 @@ function accentPicker(currentAccent) {
 
 function selectAccent(hex) {
   if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return;
+  previousAccent = state.settings.appearance?.customAccent || null;
   state.settings.appearance = {
     ...(state.settings.appearance || {}),
     customAccent: String(hex).toLowerCase()
   };
   applyCustomAccent(state.settings.appearance.customAccent);
   persistSettingsSoon();
+  setToast({
+    message: t("settings.accentChangedToast"),
+    action: "undo-accent",
+    actionLabel: t("common.undo")
+  });
   render();
 }
 
@@ -4079,9 +4087,22 @@ document.addEventListener("click", async (event) => {
     await undoLastQuarantine();
     return;
   }
+  if (action === "undo-accent") {
+    state.settings.appearance = {
+      ...(state.settings.appearance || {}),
+      customAccent: previousAccent
+    };
+    applyCustomAccent(previousAccent);
+    previousAccent = null;
+    state.toast = "";
+    persistSettingsSoon();
+    render();
+    return;
+  }
   if (action === "dismiss-toast") {
     state.toast = "";
     state.quarantineUndo = null;
+    previousAccent = null;
     render();
     return;
   }

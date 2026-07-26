@@ -3,6 +3,7 @@
   "appName": "DiskSnoop",
   "version": "1.8.0-beta.1",
   "messages": {
+    "common.undo": "Desfazer",
     "boot.loadingApp": "Preparando DiskSnoop...",
     "boot.openingApp": "Abrindo app...",
     "boot.startFailed": "Não foi possível iniciar",
@@ -172,6 +173,7 @@
     "settings.resetAccent": "Restaurar aparência padrão",
     "settings.accentWarningContrast": "Essa cor pode ficar difícil de enxergar no tema atual.",
     "settings.accentWarningStatus": "Essa cor é parecida com a cor de {status} do app, pode causar confusão.",
+    "settings.accentChangedToast": "Cor de destaque alterada.",
     "settings.language": "Idioma",
     "settings.languageLabel": "Idioma da interface",
     "settings.languageHelp": "Escolha o idioma usado nos menus, telas e mensagens do app.",

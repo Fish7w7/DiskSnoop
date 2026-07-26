@@ -110,6 +110,17 @@ test("accent avisa colisões com os tokens de status do tema ativo", () => {
   );
 });
 
+test("troca de accent oferece desfazer exato sem empilhar toasts", () => {
+  assert.match(renderer, /let previousAccent = null;/);
+  assert.match(renderer, /function selectAccent\(hex\)[\s\S]*?previousAccent = state\.settings\.appearance\?\.customAccent \|\| null;[\s\S]*?action: "undo-accent"[\s\S]*?actionLabel: t\("common\.undo"\)/);
+  assert.match(renderer, /if \(action === "undo-accent"\) \{[\s\S]*?customAccent: previousAccent[\s\S]*?applyCustomAccent\(previousAccent\);[\s\S]*?state\.toast = "";/);
+  assert.match(renderer, /state\.toast = toast\.message \? toast : "";/);
+  assert.equal(ptBR.messages["common.undo"], "Desfazer");
+  assert.equal(enUS.messages["common.undo"], "Undo");
+  assert.equal(ptBR.messages["settings.accentChangedToast"], "Cor de destaque alterada.");
+  assert.equal(enUS.messages["settings.accentChangedToast"], "Accent color changed.");
+});
+
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
   const finishStart = css.indexOf(':root[data-theme="dark"] .app-header');
   const finishEnd = css.indexOf("@media (max-width: 1100px)", finishStart);
