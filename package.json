@@ -13,14 +13,15 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check src/main/main.js && node --check src/main/quarantine-safety.js && node --check src/main/installed-apps.js && node --check src/main/authenticode.js && node --check src/main/boot-theme.js && node --check src/main/preload.js && node --check src/scanner/scanner.js && node --check src/renderer/i18n.js && node --check src/renderer/local-changelog.js && node --check src/renderer/renderer.js",
+    "check": "node --check src/main/main.js && node --check src/main/quarantine-safety.js && node --check src/main/installed-apps.js && node --check src/main/authenticode.js && node --check src/main/boot-theme.js && node --check src/main/preload.js && node --check src/scanner/scanner.js && node --check src/renderer/i18n.js && node --check src/renderer/local-changelog.js && node --check src/renderer/color-utils.js && node --check src/renderer/renderer.js",
+    "test:colors": "node tests/color-utils.test.js",
     "test:quarantine": "node tests/quarantine-safety.test.js",
     "test:i18n": "node tests/i18n-rendered-text.test.js",
     "test:safety-integration": "node tests/safety-integration.test.js",
     "test:authenticode": "node tests/authenticode.test.js",
     "test:boot-theme": "node tests/boot-theme.test.js",
     "test:ui": "node tests/ui-overlay.test.js",
-    "test": "npm run test:quarantine && npm run test:safety-integration && npm run test:authenticode && npm run test:boot-theme && npm run test:ui && npm run test:i18n",
+    "test": "npm run test:colors && npm run test:quarantine && npm run test:safety-integration && npm run test:authenticode && npm run test:boot-theme && npm run test:ui && npm run test:i18n",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
     "dist:portable": "electron-builder --win portable"
