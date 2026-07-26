@@ -47,6 +47,10 @@
       "src/**/*",
       "package.json"
     ],
+    "electronLanguages": [
+      "en-US",
+      "pt-BR"
+    ],
     "win": {
       "icon": "src/assets/app-icon.ico",
       "target": [
