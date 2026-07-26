@@ -201,8 +201,8 @@ body {
 }
 
 #app {
-  opacity: 0;
-  transform: scale(0.98);
+  opacity: 1;
+  transform: none;
 }
 
 #app.window-enter {

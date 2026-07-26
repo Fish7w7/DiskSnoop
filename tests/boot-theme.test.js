@@ -66,7 +66,7 @@ test("usa o tema do sistema quando explícito e dark como fallback seguro", () =
 test("anima o conteúdo na abertura sem substituir a proteção contra flash", () => {
   const css = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "styles.css"), "utf8");
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
-  assert.match(css, /#app\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?transform:\s*scale\(0\.98\);/);
+  assert.match(css, /#app\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*none;/);
   assert.match(css, /#app\.window-enter\s*\{\s*animation:\s*window-enter 200ms ease-out forwards;/);
   assert.match(css, /@keyframes window-enter\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?transform:\s*scale\(0\.98\);[\s\S]*?opacity:\s*1;[\s\S]*?transform:\s*scale\(1\);/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?#app\s*\{\s*animation:\s*none;/);
