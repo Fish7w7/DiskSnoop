@@ -19,6 +19,17 @@ Na página da release, escolha:
 
 > Requer Windows 10 ou superior em sistema 64 bits.
 
+## Novidades da versão 1.10.0
+
+A versão 1.10.0 é uma atualização de manutenção interna, sem mudanças intencionais na interface ou no comportamento.
+
+* O pacote do Chromium agora mantém somente os idiomas internos `en-US` e `pt-BR`.
+* Assets, traduções, exports e source maps sem uso foram removidos após auditoria manual.
+* A fonte Inter embutida foi reduzida à variação normal com subsets Latin e Latin Extended, usada nos pesos 400, 500, 600, 650, 700 e 800.
+* O instalador passou de 103,89 MB para 92,03 MB.
+* A versão portable passou de 103,61 MB para 91,75 MB.
+* O `app.asar` passou de 7,23 MB para 2,05 MB.
+
 ---
 
 <!-- Adicione um screenshot ou GIF do app aqui. Exemplo:
@@ -153,16 +164,19 @@ npm run dev
 ```powershell
 npm run check
 npm test
+npx knip
 ```
 
 Os testes cobrem regras críticas de quarentena e a camada de tradução renderizada para evitar textos em Português quando a interface está em Inglês.
+
+O Knip audita arquivos, exports e dependências sem uso. O relatório deve ser revisado manualmente, pois entradas carregadas pelo Electron, pelo HTML ou por ações dinâmicas podem gerar falsos positivos.
 
 Também há regressões para proteção AppX, cache do inventário, Authenticode, tema do primeiro frame, overlays responsivos, scroll e textos copiados para tirar dúvidas.
 
 ### Build para Windows
 
 ```powershell
-npm install
+npm ci
 npm run dist
 ```
 
