@@ -87,6 +87,15 @@ test("restaurar accent remove apenas a cor customizada e preserva o tema", () =>
   assert.equal(enUS.messages["settings.resetAccent"], "Restore default appearance");
 });
 
+test("accent avisa contraste de interface abaixo de 3:1 sem bloquear a aplicação", () => {
+  assert.match(renderer, /function checkAccentWarnings\(hex, tokens\) \{[\s\S]*?contrastRatio\(hex, tokens\.background\) < 3[\s\S]*?type: "contrast"/);
+  assert.match(renderer, /function accentWarnings\(currentAccent\)[\s\S]*?checkAccentWarnings\(currentAccent, currentThemeColorTokens\(\)\)/);
+  assert.match(renderer, /data-accent-warnings>\$\{accentWarnings\(currentAccent\)\}/);
+  assert.match(css, /\.accent-warning\s*\{[\s\S]*?color:\s*var\(--textMuted\);/);
+  assert.equal(ptBR.messages["settings.accentWarningContrast"], "Essa cor pode ficar difícil de enxergar no tema atual.");
+  assert.equal(enUS.messages["settings.accentWarningContrast"], "This color may be hard to see in the current theme.");
+});
+
 test("Grafite recebe a camada de profundidade escura sem afetar Papel", () => {
   const finishStart = css.indexOf(':root[data-theme="dark"] .app-header');
   const finishEnd = css.indexOf("@media (max-width: 1100px)", finishStart);

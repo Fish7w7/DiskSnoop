@@ -159,6 +159,26 @@
   display: none;
 }
 
+.accent-warnings {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.accent-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--textMuted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.accent-warning .icon {
+  flex: 0 0 auto;
+  color: var(--warning);
+}
+
 .reset-accent-button {
   align-self: flex-start;
 }

@@ -15,7 +15,7 @@ const ACCENT_PRESETS = [
   "#2f80ff", "#ff2e97", "#00c2a8", "#ff6b35",
   "#8b5cf6", "#f2c94c", "#e63946", "#38b000"
 ];
-const { hexToRgb, rgbToCss, mixRgb } = window.diskSnoopColorUtils || {};
+const { hexToRgb, rgbToCss, mixRgb, contrastRatio } = window.diskSnoopColorUtils || {};
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
 let APP_VERSION_LABEL = "1.8.0-beta.1";
@@ -2250,6 +2250,35 @@ function themeCardPicker(currentTheme) {
   `;
 }
 
+function currentThemeColorTokens() {
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    background: styles.getPropertyValue("--background").trim(),
+    danger: styles.getPropertyValue("--danger").trim(),
+    warning: styles.getPropertyValue("--warning").trim(),
+    success: styles.getPropertyValue("--success").trim()
+  };
+}
+
+function checkAccentWarnings(hex, tokens) {
+  const warnings = [];
+  if (contrastRatio(hex, tokens.background) < 3) {
+    warnings.push({ type: "contrast", messageKey: "settings.accentWarningContrast" });
+  }
+  return warnings;
+}
+
+function accentWarnings(currentAccent) {
+  if (!currentAccent) return "";
+  return checkAccentWarnings(currentAccent, currentThemeColorTokens())
+    .map((warning) => `
+      <p class="accent-warning" data-warning-type="${warning.type}">
+        ${icon("warning")}${escapeHtml(t(warning.messageKey))}
+      </p>
+    `)
+    .join("");
+}
+
 function accentPicker(currentAccent) {
   return `
     <div class="accent-picker">
@@ -2269,7 +2298,7 @@ function accentPicker(currentAccent) {
       </label>
     </div>
     <div class="accent-preview" data-accent-preview></div>
-    <div class="accent-warnings" data-accent-warnings></div>
+    <div class="accent-warnings" data-accent-warnings>${accentWarnings(currentAccent)}</div>
     ${currentAccent ? `
       <button class="secondary reset-accent-button" data-action="reset-accent" type="button">
         ${icon("reset")}${escapeHtml(t("settings.resetAccent"))}

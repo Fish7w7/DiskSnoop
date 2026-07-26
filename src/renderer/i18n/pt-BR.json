@@ -167,6 +167,7 @@
     "settings.accentHelp": "Escolha uma cor independente do tema atual.",
     "settings.accentCustom": "Personalizada",
     "settings.resetAccent": "Restaurar aparência padrão",
+    "settings.accentWarningContrast": "Essa cor pode ficar difícil de enxergar no tema atual.",
     "settings.language": "Idioma",
     "settings.languageLabel": "Idioma da interface",
     "settings.languageHelp": "Escolha o idioma usado nos menus, telas e mensagens do app.",
