@@ -30,6 +30,20 @@ test("Pastas Grandes oferece texto de dúvida com contexto de segurança", () =>
   assert.match(renderer, /if \(context === "folder"\) return findFolder\(id\) \|\| state\.selectedItem;/);
 });
 
+test("callouts informativos mantêm a mesma moldura em todas as telas", () => {
+  for (const title of [
+    "Revisão protegida",
+    "Duplicados com cautela",
+    "Achados conservadores",
+    "Quarentena organizada"
+  ]) {
+    assert.match(renderer, new RegExp(`safetyNote\\("${title}`));
+  }
+  assert.match(css, /\.safety-note\s*\{[\s\S]*?border:\s*1px solid[\s\S]*?background:\s*color-mix\(/);
+  assert.doesNotMatch(css, /\.(?:candidates-view|quarantine-view) \.safety-note[\s\S]*?border:\s*0;/);
+  assert.doesNotMatch(css, /\.(?:candidates-view|quarantine-view) \.safety-note[\s\S]*?background:\s*transparent;/);
+});
+
 test("estados vazios reutilizam ilustrações que herdam a cor do tema", () => {
   for (const kind of ["folder", "search", "history"]) {
     assert.match(renderer, new RegExp(`${kind}: .*stroke="currentColor"`));

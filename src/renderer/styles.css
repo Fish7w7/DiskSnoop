@@ -4174,21 +4174,6 @@ input[type="checkbox"] {
   margin: 0 auto;
 }
 
-.candidates-view .safety-note,
-.quarantine-view .safety-note {
-  min-height: 0;
-  margin: 0 0 var(--space-6);
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font-size: var(--text-xs);
-}
-
-.candidates-view .safety-note .icon,
-.quarantine-view .safety-note .icon {
-  color: var(--textMuted);
-}
-
 .candidate-summary,
 .quarantine-summary {
   gap: var(--space-6);
