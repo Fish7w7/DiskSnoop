@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, nativeTheme, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard, nativeTheme, nativeImage, screen } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fscb = require("node:fs");
@@ -8,9 +8,21 @@ const { execFile } = require("node:child_process");
 const { fork } = require("node:child_process");
 const { createInstalledAppsInventory } = require("./installed-apps");
 const { createAuthenticodeVerifier } = require("./authenticode");
+const { createDiskHealthService } = require("./disk-health");
+const {
+  createElevatedRechecker,
+  parseElevatedRecheckArgs,
+  runElevatedWorker,
+  validateHandoffPaths
+} = require("./elevated-recheck");
 const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
 const { createTaskbarBadgeController } = require("./taskbar-badge");
 const { resolveInitialLanguage } = require("./system-language");
+const {
+  MIN_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+  resolveWindowState
+} = require("./window-state");
 const {
   assertCanCrossVolumeMove,
   assertPermanentDeletionAllowed,
@@ -37,6 +49,7 @@ let activeScan = null;
 let protectedActionCount = 0;
 let updateDownload = null;
 let autoUpdaterConfigured = false;
+let windowStateSaveTimer = null;
 
 app.commandLine.appendSwitch("disable-features", "AutofillServerCommunication,AutofillEnableAccountWalletStorage");
 app.setName("DiskSnoop");
@@ -207,6 +220,8 @@ function runPowerShell(script, options = {}) {
 
 const installedAppsInventory = createInstalledAppsInventory({ runPowerShell });
 const authenticodeVerifier = createAuthenticodeVerifier({ runPowerShell });
+const diskHealthService = createDiskHealthService({ runPowerShell });
+const recheckPathsElevated = createElevatedRechecker({ app, execFile });
 
 async function getDrives() {
   if (process.platform !== "win32") {
@@ -1054,15 +1069,62 @@ async function installDownloadedUpdate() {
   return { ok: true };
 }
 
+function currentWindowState(window) {
+  if (!window || window.isDestroyed()) return null;
+  const bounds = window.getNormalBounds();
+  return {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    maximized: window.isMaximized()
+  };
+}
+
+function saveWindowState(window) {
+  const state = currentWindowState(window);
+  if (!state) return Promise.resolve();
+  return writeJson("window-state.json", state).catch((error) => {
+    console.error("DiskSnoop window state save failure:", error);
+  });
+}
+
+function scheduleWindowStateSave(window) {
+  clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    void saveWindowState(window);
+  }, 250);
+}
+
+function saveWindowStateBeforeClose(window) {
+  clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = null;
+  const state = currentWindowState(window);
+  if (!state) return;
+  try {
+    fscb.mkdirSync(app.getPath("userData"), { recursive: true });
+    fscb.writeFileSync(dataFile("window-state.json"), JSON.stringify(state, null, 2), "utf8");
+  } catch (error) {
+    console.error("DiskSnoop window state final save failure:", error);
+  }
+}
+
 async function createWindow() {
   const savedSettings = await getSettings();
+  const savedWindowState = await readJson("window-state.json", {});
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const displays = [primaryDisplay, ...screen.getAllDisplays().filter((display) => display.id !== primaryDisplay.id)];
+  const initialWindowState = resolveWindowState(savedWindowState, displays);
   const bootTheme = resolveBootThemePreference(savedSettings.theme);
   const bootBackground = resolveBootBackground(bootTheme, nativeTheme.shouldUseDarkColors);
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 1040,
-    minHeight: 700,
+    x: initialWindowState.x,
+    y: initialWindowState.y,
+    width: initialWindowState.width,
+    height: initialWindowState.height,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     title: "DiskSnoop",
     frame: false,
     autoHideMenuBar: true,
@@ -1080,14 +1142,43 @@ async function createWindow() {
   mainWindow.on("focus", () => {
     taskbarBadge.clear(mainWindow);
   });
+  mainWindow.on("resize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("move", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("maximize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("unmaximize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("close", () => saveWindowStateBeforeClose(mainWindow));
+  mainWindow.on("closed", () => {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+    mainWindow = null;
+  });
   mainWindow.once("ready-to-show", () => {
-    if (!mainWindow?.isDestroyed()) mainWindow.show();
+    if (!mainWindow?.isDestroyed()) {
+      if (initialWindowState.maximized) mainWindow.maximize();
+      mainWindow.show();
+    }
   });
 
   await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
 }
 
-app.whenReady().then(createWindow);
+const elevatedRecheckMode = parseElevatedRecheckArgs(process.argv);
+if (elevatedRecheckMode) {
+  app.whenReady().then(async () => {
+    try {
+      if (!validateHandoffPaths(elevatedRecheckMode.requestFile, elevatedRecheckMode.resultFile, app.getPath("userData"))) {
+        throw new Error("Arquivos de handoff fora da pasta de dados do DiskSnoop.");
+      }
+      await runElevatedWorker(elevatedRecheckMode.requestFile, elevatedRecheckMode.resultFile);
+      app.exit(0);
+    } catch (error) {
+      console.error("DiskSnoop elevated recheck failure:", error);
+      app.exit(1);
+    }
+  });
+} else {
+  app.whenReady().then(createWindow);
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -1098,6 +1189,14 @@ app.on("activate", () => {
 });
 
 ipcMain.handle("drives:list", async () => getDrives());
+ipcMain.handle("disk:health", async (_event, driveLetter) => diskHealthService.get(driveLetter));
+ipcMain.handle("access:recheckElevated", async (_event, pathsToRecheck = []) => {
+  try {
+    return ipcOk(await recheckPathsElevated(pathsToRecheck));
+  } catch (error) {
+    return ipcError(error);
+  }
+});
 ipcMain.handle("window:minimize", async () => mainWindow?.minimize());
 ipcMain.handle("window:maximizeToggle", async () => {
   if (!mainWindow) return false;

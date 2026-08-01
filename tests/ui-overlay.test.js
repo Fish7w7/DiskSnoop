@@ -287,10 +287,104 @@ test("aba Atualização mantém notas e caminhos legíveis no layout estreito", 
   assert.match(renderer, /class="update-local-data"[\s\S]*?\$\{escapeHtml\(dataLocation\)\}/);
   assert.match(css, /\.update-local-data\s*\{[\s\S]*?overflow-wrap:\s*break-word;[\s\S]*?white-space:\s*normal;/);
   assert.equal((renderer.match(/class="preference-item"/g) || []).length, 4);
-  assert.match(renderer, /class="preference-item"[\s\S]*?data-update-pref="autoDownload"[\s\S]*?class="preference-note"[\s\S]*?prefAutoDownloadHelp/);
+  assert.equal((renderer.match(/class="preference-label-text"/g) || []).length, 4);
+  assert.match(renderer, /class="preference-item"[\s\S]*?class="preference-line"[\s\S]*?data-update-pref="autoDownload"[\s\S]*?class="preference-texts"[\s\S]*?prefAutoDownload[\s\S]*?class="preference-note"[\s\S]*?prefAutoDownloadHelp/);
   assert.doesNotMatch(renderer, /update-preference-with-help|update-preference-control|update-preference-help/);
   assert.match(css, /\.update-preferences\s*\{[\s\S]*?gap:\s*var\(--space-3\);/);
   assert.match(css, /\.preference-item\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*var\(--space-1\);/);
-  assert.match(css, /\.preference-note\s*\{[\s\S]*?margin:\s*0;[\s\S]*?padding-left:\s*28px;[\s\S]*?font-size:\s*var\(--text-xs\);/);
+  assert.match(css, /\.preference-line\s*\{[^}]*min-width:\s*0;/);
+  assert.match(css, /\.preference-line label\s*\{[^}]*width:\s*100%;/);
+  assert.match(css, /\.settings-card \.preference-texts\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex:\s*1 1 auto;[\s\S]*?margin:\s*0;[\s\S]*?align-items:\s*center;[\s\S]*?gap:\s*var\(--space-2\);[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?font:\s*inherit;/);
+  assert.match(css, /\.settings-card \.preference-texts\s*>\s*span\s*\{[^}]*margin:\s*0;[^}]*white-space:\s*nowrap;/);
+  assert.match(css, /\.settings-card \.preference-label-text\s*\{[^}]*display:\s*inline;[^}]*margin:\s*0;[^}]*color:\s*var\(--textPrimary\);[^}]*font:\s*inherit;[^}]*line-height:\s*inherit;/);
+  assert.match(css, /\.settings-card \.preference-note\s*\{[\s\S]*?margin:\s*0;[\s\S]*?color:\s*var\(--textMuted\);[\s\S]*?font-size:\s*var\(--text-xs\);/);
+  assert.doesNotMatch(css, /\.preference-note\s*\{[^}]*padding-left:/);
   assert.match(css, /\.update-action-note\s*\{[\s\S]*?font-size:\s*var\(--text-xs\);/);
+});
+
+test("tempo restante usa amostras recentes e nunca renderiza valores inválidos", () => {
+  assert.match(renderer, /const SAMPLE_WINDOW_MS = 10000;/);
+  assert.match(renderer, /function recordProgressSample\(mappedBytes, timestamp = Date\.now\(\)\)/);
+  assert.match(renderer, /elapsedSinceStart < 3000 \|\| progressSamples\.length < 2/);
+  assert.match(renderer, /deltaBytes <= 0 \|\| deltaTime <= 0/);
+  assert.match(renderer, /Number\.isFinite\(remainingMs\) && remainingMs > 0 \? remainingMs : null/);
+  assert.match(renderer, /t\("scan\.estimating"\)/);
+  assert.match(renderer, /t\("scan\.timeRemaining", \{ time: durationLabel\(remainingMs\) \}\)/);
+  assert.equal(ptBR.messages["scan.estimating"], "Calculando tempo restante...");
+  assert.equal(enUS.messages["scan.timeRemaining"], "~{time} remaining");
+});
+
+test("painéis de detalhe oferecem cópia de caminho puro", () => {
+  assert.match(renderer, /function copyPathButton\(item\)/);
+  assert.match(renderer, /data-action="copy-path" data-id=/);
+  assert.match(renderer, /await api\.copyText\(item\.path\)/);
+  assert.match(renderer, /t\("common\.pathCopiedToast"\)/);
+  assert.ok((renderer.match(/\$\{copyPathButton\(item\)\}/g) || []).length >= 5);
+  assert.match(css, /\.icon-button\.copy-path-button\s*\{[^}]*color:\s*var\(--textMuted\);/);
+  assert.equal(ptBR.messages["common.copyPath"], "Copiar caminho");
+  assert.equal(enUS.messages["common.pathCopiedToast"], "Path copied.");
+});
+
+test("atalhos globais respeitam contexto de digitação e reutilizam ações existentes", () => {
+  assert.equal((renderer.match(/document\.addEventListener\("keydown"/g) || []).length, 1);
+  assert.match(renderer, /event\.ctrlKey && event\.key\.toLowerCase\(\) === "n"[\s\S]*?void triggerNewScan\(\)/);
+  assert.match(renderer, /if \(isTypingContext\(\)\)[\s\S]*?document\.activeElement\.blur\(\)/);
+  assert.match(renderer, /event\.key === "\/"[\s\S]*?focusCurrentSearchInput\(\)/);
+  assert.match(renderer, /event\.key === "ArrowUp" \|\| event\.key === "ArrowDown"/);
+  assert.match(renderer, /event\.key\.toLowerCase\(\) === "c"[\s\S]*?copyItemPath\(item\)/);
+  assert.match(renderer, /scrollIntoView\(\{ block: "nearest", behavior \}\)/);
+  assert.match(renderer, /LIST_KEY_REPEAT_INTERVAL_MS = 110/);
+  assert.match(renderer, /repeated && now - lastListNavigationAt < LIST_KEY_REPEAT_INTERVAL_MS/);
+  assert.match(renderer, /render\(\{ suppressDetailAnimation: true \}\)/);
+  assert.match(renderer, /repeated \? "auto" : "smooth"/);
+  assert.match(css, /\.detail-overlay\.no-entry-animation \.detail-overlay-backdrop,[\s\S]*?animation:\s*none;/);
+  assert.doesNotMatch(renderer, /items\.find\(\(item\) => item\.id === state\.selectedItem\?\.id\) \|\| items\[0\]/);
+  assert.match(renderer, /currentIndex < 0[\s\S]*?direction > 0 \? 0 : items\.length - 1/);
+});
+
+test("Configurações apresenta todos os atalhos existentes dentro do aplicativo", () => {
+  assert.match(renderer, /\["shortcuts", t\("settings\.shortcutsCategory"\), "list"\]/);
+  assert.match(renderer, /function shortcutSettingRow\(keys, title, description, separator = "\+"\)/);
+  assert.match(renderer, /shortcutSettingRow\(\["Ctrl", "N"\]/);
+  assert.match(renderer, /shortcutSettingRow\(\["\/"\]/);
+  assert.match(renderer, /shortcutSettingRow\(\["Esc"\]/);
+  assert.match(renderer, /shortcutSettingRow\(\["↑", "↓"\]/);
+  assert.match(renderer, /shortcutSettingRow\(\["C"\]/);
+  assert.match(renderer, /<kbd>\$\{escapeHtml\(key\)\}<\/kbd>/);
+  assert.match(css, /\.shortcut-setting-row\s*\{[\s\S]*?grid-template-columns:/);
+  assert.match(css, /\.shortcut-keys kbd\s*\{[\s\S]*?box-shadow:/);
+  assert.equal(ptBR.messages["settings.shortcutsCategory"], "Atalhos");
+  assert.equal(enUS.messages["settings.shortcutsTitle"], "Keyboard shortcuts");
+});
+
+test("Overview mostra saúde fail-safe e revisão em lote dos caminhos sem acesso", () => {
+  assert.match(renderer, /function diskHealthBadge\(driveLetter\)/);
+  assert.match(renderer, /health\?\.status === "healthy"/);
+  assert.match(renderer, /t\("disk\.healthUnavailable"\)/);
+  assert.match(renderer, /function inaccessibleItemsPanel\(\)/);
+  assert.match(renderer, /data-action="retry-inaccessible"/);
+  assert.match(renderer, /api\.recheckPathsElevated\(paths\)/);
+  assert.match(renderer, /state\.scanResult\.skippedPaths = remaining/);
+  assert.match(renderer, /state\.scanResult\.skipped = remaining\.length/);
+  assert.equal(ptBR.messages["access.retryElevated"], "Tentar novamente como administrador");
+  assert.equal(enUS.messages["disk.healthUnavailable"], "Health data unavailable");
+  assert.match(css, /\.inaccessible-section\s*\{/);
+  assert.match(css, /\.disk-health-badge\.healthy\s*\{/);
+});
+
+test("dropdowns usam componente próprio e as abas compartilham a mesma escala", () => {
+  const index = indexHtml;
+  const customSelect = fs.readFileSync(path.join(__dirname, "..", "src", "renderer", "custom-select.js"), "utf8");
+  assert.match(index, /<script src="\.\/custom-select\.js"><\/script>/);
+  assert.match(renderer, /DiskSnoopCustomSelect\?\.enhance\(app\)/);
+  assert.match(customSelect, /role="option"/);
+  assert.match(customSelect, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
+  assert.match(customSelect, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(customSelect, /event\.key === "Escape"/);
+  assert.match(customSelect, /doc\.addEventListener\("pointerdown"/);
+  assert.match(customSelect, /calculateMenuPosition/);
+  assert.match(css, /\.custom-select-menu\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*1000;/);
+  assert.match(css, /\.content > section\s*\{[\s\S]*?var\(--page-content-max\)/);
+  assert.match(css, /--control-height:\s*46px/);
+  assert.match(css, /--table-row-height:\s*58px/);
 });

@@ -26,6 +26,7 @@ const state = {
   files: 0,
   directories: 0,
   skipped: 0,
+  skippedPaths: new Map(),
   mappedBytes: 0,
   candidates: [],
   largeFolders: [],
@@ -41,6 +42,23 @@ function nowIso() {
 
 function post(type, payload) {
   if (process.send) process.send({ type, payload });
+}
+
+function skippedReason(error) {
+  const code = String(error?.code || "").trim();
+  if (code) return code;
+  const message = String(error?.message || "").trim();
+  return message || "UNKNOWN";
+}
+
+function recordSkippedPath(itemPath, error) {
+  state.skipped += 1;
+  const normalizedPath = String(itemPath || "").trim();
+  if (!normalizedPath) return;
+  state.skippedPaths.set(normalizedPath.toLowerCase(), {
+    path: normalizedPath,
+    reason: skippedReason(error)
+  });
 }
 
 function toLowerPath(value) {
@@ -343,8 +361,8 @@ async function scanDir(dirPath) {
   let entries;
   try {
     entries = await fs.readdir(dirPath, { withFileTypes: true });
-  } catch {
-    state.skipped += 1;
+  } catch (error) {
+    recordSkippedPath(dirPath, error);
     return record;
   }
 
@@ -356,8 +374,8 @@ async function scanDir(dirPath) {
     let stat;
     try {
       stat = await fs.lstat(fullPath);
-    } catch {
-      state.skipped += 1;
+    } catch (error) {
+      recordSkippedPath(fullPath, error);
       continue;
     }
     if (stat.isSymbolicLink()) continue;
@@ -452,6 +470,7 @@ async function start(payload) {
       files: state.files,
       directories: state.directories,
       skipped: state.skipped,
+      skippedPaths: [...state.skippedPaths.values()],
       mappedBytes: state.mappedBytes,
       rootSummary: rootSummaries[0] || null,
       scanRoots: roots,
@@ -480,5 +499,7 @@ process.on("message", (message) => {
 });
 
 module.exports = {
-  buildLargeFolderItem
+  buildLargeFolderItem,
+  recordSkippedPath,
+  skippedReason
 };

@@ -19,16 +19,14 @@ Na página da release, escolha:
 
 > Requer Windows 10 ou superior em sistema 64 bits.
 
-## Novidades da versão 1.10.0
+## Novidades da versão 1.11.0
 
-A versão 1.10.0 é uma atualização de manutenção interna, sem mudanças intencionais na interface ou no comportamento.
-
-* O pacote do Chromium agora mantém somente os idiomas internos `en-US` e `pt-BR`.
-* Assets, traduções, exports e source maps sem uso foram removidos após auditoria manual.
-* A fonte Inter embutida foi reduzida à variação normal com subsets Latin e Latin Extended, usada nos pesos 400, 500, 600, 650, 700 e 800.
-* O instalador passou de 103,89 MB para 92,03 MB.
-* A versão portable passou de 103,61 MB para 91,75 MB.
-* O `app.asar` passou de 7,23 MB para 2,05 MB.
+* O progresso do scan agora calcula uma estimativa aproximada de tempo restante usando a velocidade dos últimos 10 segundos.
+* Os painéis de detalhes ganharam um botão discreto para copiar somente o caminho do item.
+* Novos atalhos permitem iniciar outro scan (`Ctrl+N`), buscar (`/`), fechar detalhes (`Esc`), navegar com as setas e copiar o caminho selecionado (`C`).
+* A Visão Geral mostra um indicador discreto da saúde informada pelo disco físico, com comportamento seguro quando os dados SMART não estão disponíveis.
+* Caminhos sem acesso agora são listados com o motivo da falha e podem ser verificados novamente, em lote, após confirmação do UAC.
+* A rechecagem como administrador é somente leitura: não exclui nem move arquivos e encerra a espera após 60 segundos.
 
 ---
 
@@ -56,6 +54,8 @@ As telas de Pastas Grandes, Arquivos Grandes, Candidatos, Duplicados e Sobras de
 
 O scanner funciona em um processo separado e permite acompanhar o progresso, pausar ou cancelar a análise.
 
+Durante o scan, uma estimativa baseada na velocidade recente ajuda a indicar o tempo restante sem tratar o valor como uma previsão exata.
+
 Os resultados incluem:
 
 * ranking das maiores pastas;
@@ -63,6 +63,10 @@ Os resultados incluem:
 * duração da análise;
 * quantidade de itens encontrados;
 * arquivos e pastas que não puderam ser acessados.
+
+Na Visão Geral, esses caminhos são apresentados individualmente com o motivo informado pelo Windows. Uma rechecagem opcional como administrador pode tentar apenas ler e medir os itens novamente.
+
+Quando os cmdlets de Storage do Windows oferecem dados, a Visão Geral também mostra um indicador complementar da saúde do disco. Ausência de suporte é exibida como indisponível, nunca como saudável por padrão.
 
 ### 🧹 Limpeza inteligente
 
@@ -109,7 +113,19 @@ Pastas grandes, candidatos, duplicados e sobras de aplicativos permitem copiar u
 
 Isso facilita pesquisar ou pedir ajuda antes de remover um item desconhecido.
 
+O botão de copiar caminho mantém essa ação separada: ele envia para a área de transferência somente o caminho puro do arquivo ou pasta.
+
 Executáveis e bibliotecas compatíveis também podem ter a assinatura digital verificada.
+
+### ⌨️ Atalhos de teclado
+
+* `Ctrl+N` — iniciar um novo scan;
+* `/` — focar a busca da tela atual;
+* `Esc` — fechar o painel de detalhes;
+* `↑` e `↓` — navegar pelos itens visíveis;
+* `C` — copiar o caminho do item selecionado.
+
+Atalhos de uma tecla ficam desativados enquanto a pessoa digita em campos de texto. `Ctrl+N` continua disponível nesse contexto.
 
 ### 🔄 Atualizações
 
@@ -142,7 +158,8 @@ O idioma pode ser alterado nas configurações.
 
 ## Limites conhecidos
 
-* Arquivos bloqueados ou sem permissão podem não ser analisados completamente.
+* Arquivos bloqueados ou sem permissão podem não ser analisados completamente; a rechecagem elevada depende de confirmação no UAC e continua sendo somente leitura.
+* Alguns discos USB, virtuais ou controladores específicos não fornecem dados de saúde pelos cmdlets de Storage.
 * Algumas pastas em `ProgramData`, `Program Files` ou `Windows` podem exigir permissão de administrador.
 * A detecção de sobras de aplicativos é conservadora e pode mostrar pastas que ainda pertencem a programas instalados.
 * A versão portable não consegue substituir automaticamente o executável enquanto ele estiver aberto.

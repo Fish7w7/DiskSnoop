@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("diskSnoopLocaleData", {
 
 contextBridge.exposeInMainWorld("diskScope", {
   listDrives: () => ipcRenderer.invoke("drives:list"),
+  getDiskHealth: (driveLetter) => ipcRenderer.invoke("disk:health", driveLetter),
+  recheckPathsElevated: (paths) => unwrapInvoke("access:recheckElevated", paths),
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
   maximizeWindow: () => ipcRenderer.invoke("window:maximizeToggle"),
   closeWindow: () => ipcRenderer.invoke("window:close"),

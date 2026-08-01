@@ -20,7 +20,10 @@ const STATUS_COLLISION_THRESHOLD = 60;
 const { hexToRgb, rgbToCss, mixRgb, contrastRatio, rgbDistance } = window.diskSnoopColorUtils || {};
 const LAST_SCAN_KEY = "disksnoop:lastScan";
 const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
-let APP_VERSION_LABEL = "1.10.0";
+const SAMPLE_WINDOW_MS = 10000;
+const progressSamples = [];
+let scanStartedAt = 0;
+let APP_VERSION_LABEL = "1.11.0";
 
 const state = {
   screen: "welcome",
@@ -31,6 +34,9 @@ const state = {
   scanProgress: null,
   scanResult: null,
   scanComparison: null,
+  diskHealthByDrive: {},
+  diskHealthLoading: new Set(),
+  accessRetrying: false,
   reportMode: "none",
   hiddenPaths: new Set(),
   selectedItem: null,
@@ -383,6 +389,40 @@ function durationLabel(ms) {
     return `${hours}h ${minutes % 60}min`;
   }
   return minutes ? `${minutes}min ${seconds}s` : `${seconds}s`;
+}
+
+function recordProgressSample(mappedBytes, timestamp = Date.now()) {
+  const bytes = Number(mappedBytes || 0);
+  progressSamples.push({ timestamp, mappedBytes: bytes });
+  while (progressSamples.length > 1 && timestamp - progressSamples[0].timestamp > SAMPLE_WINDOW_MS) {
+    progressSamples.shift();
+  }
+}
+
+function estimateRemainingMs(totalBytes, mappedBytes, startedAt = scanStartedAt, now = Date.now()) {
+  const elapsedSinceStart = now - Number(startedAt || 0);
+  if (elapsedSinceStart < 3000 || progressSamples.length < 2) return null;
+  if (!totalBytes || mappedBytes >= totalBytes) return null;
+
+  const oldest = progressSamples[0];
+  const newest = progressSamples[progressSamples.length - 1];
+  const deltaBytes = newest.mappedBytes - oldest.mappedBytes;
+  const deltaTime = newest.timestamp - oldest.timestamp;
+  if (deltaBytes <= 0 || deltaTime <= 0) return null;
+
+  const rate = deltaBytes / deltaTime;
+  const remainingMs = (totalBytes - mappedBytes) / rate;
+  return Number.isFinite(remainingMs) && remainingMs > 0 ? remainingMs : null;
+}
+
+function scanTimeRemainingText(progress) {
+  if (!scanStartedAt) return "";
+  if (Date.now() - scanStartedAt < 3000 || progressSamples.length < 2) return t("scan.estimating");
+  const remainingMs = estimateRemainingMs(
+    Number(state.selectedDrive?.used || 0),
+    Number(progress?.mappedBytes || 0)
+  );
+  return remainingMs === null ? "" : t("scan.timeRemaining", { time: durationLabel(remainingMs) });
 }
 
 function updateStatusMeta(status) {
@@ -981,6 +1021,7 @@ function disksScreen() {
 
 function scanningScreen() {
   const progress = state.scanProgress || { progress: 0, currentPath: "", files: 0, skipped: 0, mappedBytes: 0, candidates: 0 };
+  const remainingText = scanTimeRemainingText(progress);
   return `
     <div class="window">
       ${appHeader()}
@@ -989,6 +1030,7 @@ function scanningScreen() {
           <h1>${escapeHtml(t("scan.title", { drive: state.selectedDrive?.letter || "" }))}</h1>
           <p>${escapeHtml(progress.currentPath || t("scan.preparing"))}</p>
           ${progressBar(progress.progress || 0)}
+          ${remainingText ? `<p class="scan-time-remaining" aria-live="polite">${escapeHtml(remainingText)}</p>` : ""}
           <div class="scan-grid">
             <div><span>${escapeHtml(t("scan.files"))}</span><strong>${formatCount(progress.files)}</strong></div>
             <div><span>${escapeHtml(t("scan.mapped"))}</span><strong>${formatBytes(progress.mappedBytes || 0)}</strong></div>
@@ -1281,6 +1323,63 @@ function scanComparisonPanel() {
   `;
 }
 
+function diskHealthBadge(driveLetter) {
+  const key = String(driveLetter || "").toUpperCase();
+  const health = state.diskHealthByDrive[key];
+  if (!health && state.diskHealthLoading.has(key)) {
+    return `<span class="disk-health-badge neutral">${icon("clock")}${escapeHtml(t("disk.healthLoading"))}</span>`;
+  }
+  if (health?.status === "healthy") {
+    return `<span class="disk-health-badge healthy">${icon("shield")}${escapeHtml(t("disk.healthy"))}</span>`;
+  }
+  if (health?.status === "attention") {
+    return `<span class="disk-health-badge attention">${icon("shield")}${escapeHtml(t("disk.attention"))}</span>`;
+  }
+  return `<span class="disk-health-badge neutral">${icon("disk")}${escapeHtml(t("disk.healthUnavailable"))}</span>`;
+}
+
+async function loadDiskHealth(driveLetter) {
+  const key = String(driveLetter || "").toUpperCase();
+  if (!key || !api.getDiskHealth || state.diskHealthByDrive[key] || state.diskHealthLoading.has(key)) return;
+  state.diskHealthLoading.add(key);
+  if (state.screen === "app" && state.tab === "overview") render();
+  try {
+    state.diskHealthByDrive[key] = await api.getDiskHealth(key) || { status: "unavailable" };
+  } catch {
+    state.diskHealthByDrive[key] = { status: "unavailable" };
+  } finally {
+    state.diskHealthLoading.delete(key);
+    if (state.screen === "app" && state.tab === "overview") render();
+  }
+}
+
+function inaccessibleItemsPanel() {
+  const items = Array.isArray(state.scanResult?.skippedPaths) ? state.scanResult.skippedPaths : [];
+  if (!items.length) return "";
+  return `
+    <section class="overview-section inaccessible-section">
+      <div class="inaccessible-heading">
+        <div>
+          <h2>${escapeHtml(t("access.title"))}</h2>
+          <p>${escapeHtml(t("access.description"))}</p>
+        </div>
+        <button class="secondary" data-action="retry-inaccessible" ${state.accessRetrying ? "disabled" : ""}>
+          ${icon("shield")}${escapeHtml(t(state.accessRetrying ? "access.retrying" : "access.retryElevated"))}
+        </button>
+      </div>
+      <div class="inaccessible-list">
+        ${items.map((item) => `
+          <div class="inaccessible-row">
+            <code title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
+            <span>${escapeHtml(item.reason || "UNKNOWN")}</span>
+          </div>
+        `).join("")}
+      </div>
+      <p class="inaccessible-readonly-note">${escapeHtml(t("access.readOnlyNote"))}</p>
+    </section>
+  `;
+}
+
 function overviewTab() {
   const result = state.scanResult;
   const drive = result.drive;
@@ -1304,7 +1403,10 @@ function overviewTab() {
           <h1>${escapeHtml(normalizeMediaType(drive.type))} ${escapeHtml(drive.letter)}</h1>
           <p>${compactBytes(drive.used)} usados de ${compactBytes(drive.total)}</p>
         </div>
-        <span class="overview-recency">${isHistoricalReport ? escapeHtml(t("overview.historical")) : escapeHtml(t("overview.latest"))}: ${relativeDate(result.finishedAt)}</span>
+        <div class="overview-heading-meta">
+          ${diskHealthBadge(drive.letter)}
+          <span class="overview-recency">${isHistoricalReport ? escapeHtml(t("overview.historical")) : escapeHtml(t("overview.latest"))}: ${relativeDate(result.finishedAt)}</span>
+        </div>
       </div>
       ${isHistoricalReport ? historicalReportNote() : ""}
 
@@ -1361,6 +1463,8 @@ function overviewTab() {
           </div>
         </section>
       </div>
+
+      ${inaccessibleItemsPanel()}
 
       <h2>Achados importantes</h2>
       <section class="finding-list overview-finding-list">
@@ -1548,7 +1652,7 @@ function folderRisk(item) {
 
 function foldersTab() {
   const items = filteredFolders();
-  const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
+  const selected = items.find((item) => item.id === state.selectedItem?.id) || null;
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   return `
     <section>
@@ -1601,7 +1705,10 @@ function folderDetails(item) {
     <section class="panel detail-strip">
       <span class="detail-icon">${icon("folder")}</span>
       <div class="detail-copy">
-        <h3>${escapeHtml(item.path)}</h3>
+        <div class="detail-path-heading">
+          <h3>${escapeHtml(item.path)}</h3>
+          ${copyPathButton(item)}
+        </div>
         ${isProtectedUiPath(item.path) ? reviewCallout("Componente protegido", protectedPathInfo(item.path).reason, "shield", "warning") : ""}
         ${reviewCallout("Resumo seguro", item.reason || "Pasta grande detectada no scan.", "folder")}
         ${reviewCallout("O que conferir", guidance.text, guidance.icon, guidance.tone)}
@@ -1703,7 +1810,7 @@ function safetyWeight(value) {
 
 function largeFilesTab() {
   const items = filteredLargeFiles();
-  const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
+  const selected = items.find((item) => item.id === state.selectedItem?.id) || null;
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   const total = items.reduce((sum, item) => sum + item.size, 0);
 
@@ -1767,9 +1874,12 @@ function fileDetails(item) {
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
-        <div>
+        <div class="detail-path-heading">
+          <div>
           <h3>${escapeHtml(item.name)}</h3>
           <small>${escapeHtml(item.path)}</small>
+          </div>
+          ${copyPathButton(item)}
         </div>
         <div class="candidate-detail-meta">
           <span>Tamanho <strong>${compactBytes(item.size)}</strong></span>
@@ -2004,6 +2114,36 @@ function copyDoubtButton(item, context) {
   return `<button class="secondary copy-doubt-button ${copied ? "copied" : ""}" data-action="copy-doubt" data-context="${escapeHtml(context)}" data-id="${escapeHtml(item.id)}">${icon(copied ? "check" : "clipboard")}${escapeHtml(t(copied ? "candidates.copyDoubtDone" : "candidates.copyDoubt"))}</button>`;
 }
 
+function copyPathButton(item) {
+  if (!item?.id || !item?.path) return "";
+  const label = t("common.copyPath");
+  return `<button class="icon-button copy-path-button" type="button" data-action="copy-path" data-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${icon("copy")}</button>`;
+}
+
+function findItemById(id) {
+  if (!id) return null;
+  const direct = [...(state.scanResult?.candidates || []), ...(state.scanResult?.largeFolders || [])]
+    .find((item) => String(item.id) === String(id));
+  if (direct) return direct;
+  for (const group of state.scanResult?.duplicateGroups || []) {
+    const duplicateItem = (group.items || []).find((item) => String(item.id) === String(id));
+    if (duplicateItem) return duplicateItem;
+  }
+  return null;
+}
+
+async function copyItemPath(item) {
+  if (!item?.path) return false;
+  try {
+    await api.copyText(item.path);
+    setToast({ message: t("common.pathCopiedToast"), tone: "success" });
+    return true;
+  } catch {
+    setToast({ message: t("common.pathCopyError"), tone: "warning" });
+    return false;
+  }
+}
+
 function selectionSimulationPanel(selectedItems, visibleItems) {
   const selectedSize = selectedItems.reduce((sum, item) => sum + (item.size || 0), 0);
   const safePlan = visibleItems.filter((item) => canMoveToQuarantine(item) && confidenceLevel(item)[0] === "Alta");
@@ -2034,7 +2174,7 @@ function selectionSimulationPanel(selectedItems, visibleItems) {
 
 function candidatesTab() {
   const items = filteredCandidates();
-  const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
+  const selected = items.find((item) => item.id === state.selectedItem?.id) || null;
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   const totalCandidates = state.scanResult?.candidates?.length || 0;
   const summary = candidateSafetySummary();
@@ -2122,9 +2262,12 @@ function candidateDetails(item) {
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
-        <div>
+        <div class="detail-path-heading">
+          <div>
           <h3>${escapeHtml(item.name)}</h3>
           <small>${escapeHtml(item.path)}</small>
+          </div>
+          ${copyPathButton(item)}
         </div>
         <div class="candidate-detail-meta">
           <span>Tipo <strong>${escapeHtml(cleanCandidateType(item.type))}</strong></span>
@@ -2413,7 +2556,7 @@ function duplicateGroups() {
 }
 
 function selectedDuplicate(groups = duplicateGroups()) {
-  return groups.find((group) => group.id === state.selectedDuplicateId) || groups[0] || null;
+  return groups.find((group) => group.id === state.selectedDuplicateId) || null;
 }
 
 function duplicatesTab() {
@@ -2510,6 +2653,7 @@ function duplicateDetails(group) {
             <span>${icon("file")}<strong>${index === 0 ? "Referência mais recente" : `Cópia suspeita ${index}`}</strong></span>
             <code title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
             <small>${relativeDate(item.modifiedAt)}</small>
+            ${copyPathButton(item)}
             <button class="table-action" data-action="open-path" data-path="${escapeHtml(item.path)}">Abrir</button>
           </div>
         `).join("")}
@@ -2687,7 +2831,7 @@ function leftoversTab() {
   const allItems = possibleLeftovers();
   const items = filteredLeftovers();
   const visibleItems = items.slice(0, state.leftoversLimit);
-  const selected = items.find((item) => item.id === state.selectedItem?.id) || items[0];
+  const selected = items.find((item) => item.id === state.selectedItem?.id) || null;
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   const possible = allItems.filter((item) => leftoverStatus(item)[0] === "Possível sobra").length;
   const installed = allItems.filter((item) => leftoverStatus(item)[0] === "App instalado").length;
@@ -2760,9 +2904,12 @@ function leftoverDetails(item) {
   return `
     <section class="panel explanation candidate-detail-panel">
       <div class="candidate-detail-grid">
-        <div>
+        <div class="detail-path-heading">
+          <div>
           <h3>${escapeHtml(item.name)}</h3>
           <small>${escapeHtml(item.path)}</small>
+          </div>
+          ${copyPathButton(item)}
         </div>
         <div class="candidate-detail-meta">
           <span>Status ${badge(status, kind)}</span>
@@ -3251,17 +3398,24 @@ function updatesTabV1() {
           <h2>${escapeHtml(t("updates.preferences"))}</h2>
           <div class="update-preferences">
             <div class="preference-item">
-              <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}> ${escapeHtml(t("updates.prefCheckStartup"))}</label>
+              <label><input type="checkbox" data-update-pref="checkOnStartup" ${settings.checkOnStartup === false ? "" : "checked"}><span class="preference-label-text">${escapeHtml(t("updates.prefCheckStartup"))}</span></label>
             </div>
             <div class="preference-item">
-              <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}> ${escapeHtml(t("updates.prefBeta"))}</label>
+              <label><input type="checkbox" data-update-pref="includeBeta" ${settings.includeBeta === false ? "" : "checked"}><span class="preference-label-text">${escapeHtml(t("updates.prefBeta"))}</span></label>
             </div>
             <div class="preference-item">
-              <label><input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload === false ? "" : "checked"} ${settings.preferManual ? "disabled" : ""}> ${escapeHtml(t("updates.prefAutoDownload"))}</label>
-              <p class="preference-note">${escapeHtml(t("updates.prefAutoDownloadHelp"))}</p>
+              <div class="preference-line">
+                <label>
+                  <input type="checkbox" data-update-pref="autoDownload" ${settings.autoDownload === false ? "" : "checked"} ${settings.preferManual ? "disabled" : ""}>
+                  <span class="preference-texts">
+                    <span class="preference-label-text">${escapeHtml(t("updates.prefAutoDownload"))}</span>
+                    <span class="preference-note">${escapeHtml(t("updates.prefAutoDownloadHelp"))}</span>
+                  </span>
+                </label>
+              </div>
             </div>
             <div class="preference-item">
-              <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}> ${escapeHtml(t("updates.prefManual"))}</label>
+              <label><input type="checkbox" data-update-pref="preferManual" ${settings.preferManual ? "checked" : ""}><span class="preference-label-text">${escapeHtml(t("updates.prefManual"))}</span></label>
             </div>
           </div>
           ${update.ignoredVersion ? `<p class="muted">${escapeHtml(t("updates.ignored", { version: update.ignoredVersion }))}</p>` : ""}
@@ -3290,6 +3444,7 @@ function settingsTab() {
     ["analysis", "Análise", "search"],
     ["quarantine", "Quarentena", "shield"],
     ["scope", "Escopo do scan", "folder"],
+    ["shortcuts", t("settings.shortcutsCategory"), "list"],
     ["maintenance", "Manutenção", "database"],
     ["updates", "Atualização", "refresh"]
   ];
@@ -3357,6 +3512,16 @@ function settingsTab() {
         <div class="detail-actions compact-actions"><button class="secondary" data-action="show-ignored" ${ignoredCount ? "" : "disabled"}>${icon("list")}Ver ignorados</button><button class="secondary" data-action="reset-ignored" ${ignoredCount ? "" : "disabled"}>${icon("reset")}Resetar ignorados</button></div>
       </section>
     `,
+    shortcuts: `
+      <div class="settings-detail-heading"><span>${icon("list")}</span><div><h2>${escapeHtml(t("settings.shortcutsTitle"))}</h2><p>${escapeHtml(t("settings.shortcutsSubtitle"))}</p></div></div>
+      <section class="settings-card vertical shortcuts-card">
+        ${shortcutSettingRow(["Ctrl", "N"], t("settings.shortcutNewScan"), t("settings.shortcutNewScanHelp"))}
+        ${shortcutSettingRow(["/"], t("settings.shortcutSearch"), t("settings.shortcutSearchHelp"))}
+        ${shortcutSettingRow(["Esc"], t("settings.shortcutClose"), t("settings.shortcutCloseHelp"))}
+        ${shortcutSettingRow(["↑", "↓"], t("settings.shortcutNavigate"), t("settings.shortcutNavigateHelp"), "/")}
+        ${shortcutSettingRow(["C"], t("settings.shortcutCopyPath"), t("settings.shortcutCopyPathHelp"))}
+      </section>
+    `,
     maintenance: `
       <div class="settings-detail-heading"><span>${icon("database")}</span><div><h2>Manutenção</h2><p>Gerencie apenas os dados locais criados pelo DiskSnoop.</p></div></div>
       <section class="settings-card vertical">
@@ -3391,6 +3556,21 @@ function settingsTab() {
     </section>
   `;
 }
+
+function shortcutSettingRow(keys, title, description, separator = "+") {
+  return `
+    <div class="shortcut-setting-row">
+      <div class="shortcut-keys" aria-label="${escapeHtml(keys.join(` ${separator} `))}">
+        ${keys.map((key, index) => `${index ? `<span aria-hidden="true">${escapeHtml(separator)}</span>` : ""}<kbd>${escapeHtml(key)}</kbd>`).join("")}
+      </div>
+      <div class="shortcut-description">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(description)}</span>
+      </div>
+    </div>
+  `;
+}
+
 function settingSelect(label, field, options, current) {
   return `
     <div class="setting-row">
@@ -3422,7 +3602,8 @@ function checkLine(label, field) {
   return `<label class="check-line"><input type="checkbox" data-setting-toggle="${field}" ${checked}>${escapeHtml(label)}</label>`;
 }
 
-function render() {
+function render({ suppressDetailAnimation = false } = {}) {
+  window.DiskSnoopCustomSelect?.close();
   applyTheme();
   document.documentElement.lang = currentLanguage();
   const app = $("#app");
@@ -3436,6 +3617,7 @@ function render() {
   if (state.screen === "scanning") app.innerHTML = scanningScreen();
   if (state.screen === "app") app.innerHTML = appShell();
   applyRenderedTranslations(app);
+  window.DiskSnoopCustomSelect?.enhance(app);
 
   if (shouldRestoreContentScroll) {
     const nextContent = $(".content");
@@ -3449,6 +3631,8 @@ function render() {
       nextContent.classList.add("tab-enter");
     }
   }
+  const detailOverlay = $(".detail-overlay");
+  if (suppressDetailAnimation) detailOverlay?.classList.add("no-entry-animation");
   const detailPanel = $(".detail-overlay-panel");
   if (detailPanel) detailPanel.focus({ preventScroll: true });
   lastRenderedTab = state.screen === "app" ? state.tab : null;
@@ -3490,7 +3674,10 @@ async function loadBasics() {
     state.selectedDrive = mostUrgentDrive();
     const restoredScan = restoreLastScan();
     render();
-    if (restoredScan) refreshLoadedScanState({ toast: false }).catch(() => {});
+    if (restoredScan) {
+      refreshLoadedScanState({ toast: false }).catch(() => {});
+      loadDiskHealth(state.selectedDrive?.letter).catch(() => {});
+    }
 
     refreshUpdateState()
       .then(() => {
@@ -3628,6 +3815,8 @@ async function startScan(letter) {
     return;
   }
   state.selectedDrive = drive;
+  scanStartedAt = Date.now();
+  progressSamples.length = 0;
   state.scanProgress = { progress: 0, currentPath: drive?.letter || "", files: 0, skipped: 0, mappedBytes: 0, candidates: 0 };
   state.scanComparison = null;
   state.paused = false;
@@ -3640,6 +3829,104 @@ async function startScan(letter) {
     state.screen = "disks";
     render();
     setToast(`Não foi possível iniciar o scan: ${cleanIpcError(error)}`);
+  }
+}
+
+async function triggerNewScan() {
+  if (state.screen !== "app") return;
+  state.screen = "disks";
+  state.scanResult = null;
+  state.scanComparison = null;
+  state.reportMode = "none";
+  state.selectedItem = null;
+  state.selectedDuplicateId = "";
+  state.detailOverlayOpen = false;
+  clearHiddenPaths();
+  state.selectedIds.clear();
+  render();
+}
+
+function recheckedReportItem(result, index) {
+  const itemPath = String(result.path || "");
+  const name = itemPath.split(/[\\/]/).filter(Boolean).pop() || itemPath;
+  return {
+    id: `rechecked-${Date.now()}-${index}`,
+    name,
+    path: itemPath,
+    size: Number(result.size || 0),
+    files: result.kind === "file" ? 1 : 0,
+    modifiedAt: result.modifiedAt || null,
+    type: result.kind === "directory" ? "Pasta" : "Arquivos grandes",
+    security: isProtectedUiPath(itemPath) ? "Sensivel" : "Verificar antes",
+    risk: isProtectedUiPath(itemPath) ? "Sensivel" : "Verificar antes",
+    reason: "Item antes inacessível, medido novamente com permissão elevada.",
+    children: []
+  };
+}
+
+function mergeElevatedRecheckResults(results) {
+  if (!state.scanResult || !Array.isArray(results)) return { recovered: 0, remaining: 0 };
+  const resultByPath = new Map(results.map((item) => [normalizeItemPath(item.path), item]));
+  const remaining = [];
+  let recovered = 0;
+  let recoveredBytes = 0;
+
+  for (const skipped of state.scanResult.skippedPaths || []) {
+    const result = resultByPath.get(normalizeItemPath(skipped.path));
+    if (!result?.accessible) {
+      remaining.push(result ? { path: skipped.path, reason: result.error || skipped.reason } : skipped);
+      continue;
+    }
+    recovered += 1;
+    recoveredBytes += Number(result.size || 0);
+    const item = recheckedReportItem(result, recovered);
+    if (result.kind === "directory" && item.size >= Number(state.settings?.largeFolderSize || 0)) {
+      if (!(state.scanResult.largeFolders || []).some((entry) => normalizeItemPath(entry.path) === normalizeItemPath(item.path))) {
+        state.scanResult.largeFolders = [...(state.scanResult.largeFolders || []), item].sort((a, b) => b.size - a.size);
+      }
+    } else if (result.kind === "file" && item.size >= Number(state.settings?.largeFileSize || 0) && !isProtectedUiPath(item.path)) {
+      if (!(state.scanResult.candidates || []).some((entry) => normalizeItemPath(entry.path) === normalizeItemPath(item.path))) {
+        state.scanResult.candidates = [...(state.scanResult.candidates || []), item].sort((a, b) => b.size - a.size);
+      }
+    }
+  }
+
+  state.scanResult.skippedPaths = remaining;
+  state.scanResult.skipped = remaining.length;
+  state.scanResult.mappedBytes = Number(state.scanResult.mappedBytes || 0) + recoveredBytes;
+  localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
+  return { recovered, remaining: remaining.length };
+}
+
+async function retryInaccessiblePaths() {
+  const paths = (state.scanResult?.skippedPaths || []).map((item) => item.path).filter(Boolean);
+  if (!paths.length || state.accessRetrying || !api.recheckPathsElevated) return;
+  state.accessRetrying = true;
+  render();
+  try {
+    const response = await api.recheckPathsElevated(paths);
+    if (response?.status === "cancelled") {
+      setToast({ message: t("access.cancelled"), tone: "warning" });
+      return;
+    }
+    if (response?.status === "timeout") {
+      setToast({ message: t("access.timeout"), tone: "warning" });
+      return;
+    }
+    if (response?.status !== "completed") {
+      setToast({ message: t("access.failed"), tone: "warning" });
+      return;
+    }
+    const merged = mergeElevatedRecheckResults(response.results);
+    setToast({
+      message: t("access.completed", { recovered: merged.recovered, remaining: merged.remaining }),
+      tone: merged.remaining ? "warning" : "success"
+    });
+  } catch {
+    setToast({ message: t("access.failed"), tone: "warning" });
+  } finally {
+    state.accessRetrying = false;
+    render();
   }
 }
 
@@ -4148,24 +4435,14 @@ document.addEventListener("click", async (event) => {
     state.selectedIds.clear();
     localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
     setToast("Bypass de teste carregado.");
+    loadDiskHealth(state.selectedDrive?.letter).catch(() => {});
   }
   if (action === "test-taskbar-badge") {
     const shown = await api.testTaskbarBadge();
     if (!shown) setToast(t("disks.testTaskbarBadgeFailed"));
   }
   if (action === "new-scan") {
-    if (state.screen === "app") {
-      state.screen = "disks";
-      state.scanResult = null;
-      state.scanComparison = null;
-      state.reportMode = "none";
-      state.selectedItem = null;
-      clearHiddenPaths();
-      state.selectedIds.clear();
-      render();
-    } else {
-      await startScan(state.selectedDrive?.letter);
-    }
+    await triggerNewScan();
   }
   if (action === "pause-scan") {
     state.paused = true;
@@ -4297,6 +4574,10 @@ document.addEventListener("click", async (event) => {
     render();
     setToast(`${safePlan.length} item(ns) adicionados à simulação. Nenhum arquivo foi alterado.`);
   }
+  if (action === "retry-inaccessible") {
+    await retryInaccessiblePaths();
+    return;
+  }
   if (action === "select-folder") {
     state.selectedItem = findFolder(id);
     state.detailOverlayOpen = true;
@@ -4323,8 +4604,7 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "close-detail") {
-    state.detailOverlayOpen = false;
-    render();
+    closeDetailPanel();
   }
   if (action === "toggle-select") {
     event.stopPropagation();
@@ -4377,6 +4657,11 @@ document.addEventListener("click", async (event) => {
       state.signatureLoading.delete(item.path);
       render();
     }
+    return;
+  }
+  if (action === "copy-path") {
+    const item = findItemById(id);
+    if (item) await copyItemPath(item);
     return;
   }
   if (action === "copy-doubt") {
@@ -4666,6 +4951,7 @@ document.addEventListener("click", async (event) => {
       syncHiddenPathsFromQuarantine();
       localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
       render();
+      loadDiskHealth(state.selectedDrive?.letter).catch(() => {});
       refreshLoadedScanState().catch(() => {});
       setToast(`Relatório de ${fullDate(snapshot.finishedAt)} carregado.`);
     } catch (error) {
@@ -4715,16 +5001,120 @@ document.addEventListener("input", (event) => {
   renderTableRefresh(event.target);
 });
 
+function isTypingContext() {
+  const element = document.activeElement;
+  if (!element) return false;
+  const tag = element.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable;
+}
+
+function focusCurrentSearchInput() {
+  const fields = {
+    folders: "search",
+    files: "fileSearch",
+    candidates: "candidateSearch",
+    duplicates: "duplicateSearch",
+    leftovers: "leftoversSearch"
+  };
+  const field = fields[state.tab];
+  if (!field) return false;
+  const input = document.querySelector(`[data-field="${field}"]`);
+  if (!input) return false;
+  input.focus();
+  input.select?.();
+  return true;
+}
+
+function closeDetailPanel() {
+  if (!state.detailOverlayOpen) return false;
+  state.detailOverlayOpen = false;
+  state.selectedItem = null;
+  state.selectedDuplicateId = "";
+  render();
+  return true;
+}
+
+function currentVisibleList() {
+  if (state.tab === "folders") return filteredFolders().slice(0, 60);
+  if (state.tab === "files") return filteredLargeFiles().slice(0, 120);
+  if (state.tab === "candidates") return filteredCandidates().slice(0, state.candidateLimit);
+  if (state.tab === "duplicates") return duplicateGroups();
+  if (state.tab === "leftovers") return filteredLeftovers().slice(0, state.leftoversLimit);
+  return [];
+}
+
+function currentSelectedPathItem() {
+  if (state.tab === "duplicates") return selectedDuplicate()?.items?.[0] || null;
+  return state.selectedItem?.path ? state.selectedItem : null;
+}
+
+function scrollSelectionIntoView(id, behavior = "smooth") {
+  requestAnimationFrame(() => {
+    const row = [...document.querySelectorAll("[data-id]")]
+      .find((element) => String(element.dataset.id) === String(id));
+    row?.scrollIntoView({ block: "nearest", behavior });
+  });
+}
+
+const LIST_KEY_REPEAT_INTERVAL_MS = 110;
+let lastListNavigationAt = 0;
+
+function moveListSelection(direction, repeated = false) {
+  const items = currentVisibleList();
+  if (!items.length) return false;
+  const now = performance.now();
+  if (repeated && now - lastListNavigationAt < LIST_KEY_REPEAT_INTERVAL_MS) return true;
+  lastListNavigationAt = now;
+  const selectedId = state.tab === "duplicates" ? state.selectedDuplicateId : state.selectedItem?.id;
+  const currentIndex = items.findIndex((item) => String(item.id) === String(selectedId));
+  const nextIndex = currentIndex < 0
+    ? direction > 0 ? 0 : items.length - 1
+    : Math.max(0, Math.min(items.length - 1, currentIndex + direction));
+  const next = items[nextIndex];
+  if (state.tab === "duplicates") state.selectedDuplicateId = next.id;
+  else state.selectedItem = next;
+  render({ suppressDetailAnimation: true });
+  scrollSelectionIntoView(next.id, repeated ? "auto" : "smooth");
+  return true;
+}
+
 document.addEventListener("keydown", (event) => {
-  if (!state.detailOverlayOpen) return;
-  if (event.key === "Escape") {
-    state.detailOverlayOpen = false;
-    render();
+  if (event.ctrlKey && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    void triggerNewScan();
     return;
   }
+
+  if (isTypingContext()) {
+    if (event.key === "Escape") document.activeElement.blur();
+    return;
+  }
+
+  if (event.key === "/") {
+    if (focusCurrentSearchInput()) event.preventDefault();
+    return;
+  }
+  if (event.key === "Escape") {
+    closeDetailPanel();
+    return;
+  }
+  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    if (moveListSelection(event.key === "ArrowDown" ? 1 : -1, event.repeat)) event.preventDefault();
+    return;
+  }
+  if (event.key.toLowerCase() === "c") {
+    const item = currentSelectedPathItem();
+    if (item) {
+      event.preventDefault();
+      void copyItemPath(item);
+    }
+    return;
+  }
+
+  if (!state.detailOverlayOpen) return;
   if (event.key !== "Tab") return;
   const panel = $(".detail-overlay-panel");
-  const focusable = [...(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])') || [])];
+  const focusable = [...(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]):not(.native-select-hidden), [tabindex]:not([tabindex="-1"])') || [])];
   if (!focusable.length) {
     event.preventDefault();
     panel?.focus();
@@ -4780,6 +5170,7 @@ document.addEventListener("change", async (event) => {
 
 api.onScanProgress((payload) => {
   state.scanProgress = payload;
+  recordProgressSample(payload?.mappedBytes);
   if (state.screen === "scanning") render();
 });
 
@@ -4794,6 +5185,7 @@ api.onScanDone(async (result) => {
   clearHiddenPaths();
   state.selectedIds.clear();
   localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(result));
+  loadDiskHealth(result.drive?.letter).catch(() => {});
   await refreshData();
   await refreshLoadedScanState({ toast: false });
 });
