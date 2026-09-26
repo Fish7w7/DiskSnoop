@@ -300,8 +300,11 @@ function normalizeDriveRoot(letter) {
 }
 
 function friendlyFsError(error) {
-  if (["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"].includes(error?.code)) {
-    return new Error("O Windows bloqueou o acesso a este item. Ele pode estar protegido, em uso ou exigir permissoes de administrador.");
+  if (error?.code === "EBUSY" || error?.code === "ENOTEMPTY") {
+    return new Error(`[${error.code}] Item em uso por outro processo.`);
+  }
+  if (error?.code === "EACCES" || error?.code === "EPERM") {
+    return new Error(`[${error.code}] Acesso negado ao mover este item.`);
   }
   return error;
 }

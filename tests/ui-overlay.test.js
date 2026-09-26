@@ -40,6 +40,52 @@ test("Pastas Grandes oferece texto de dúvida com contexto de segurança", () =>
   assert.match(renderer, /if \(context === "folder"\) return findFolder\(id\) \|\| state\.selectedItem;/);
 });
 
+test("Candidatos copia uma única dúvida para todos os itens selecionados", () => {
+  const batchBuilderStart = renderer.indexOf("function buildSelectedDoubtText(items)");
+  const batchBuilderEnd = renderer.indexOf("function doubtItemByContext", batchBuilderStart);
+  const batchBuilder = renderer.slice(batchBuilderStart, batchBuilderEnd);
+  assert.match(renderer, /function buildDoubtItemLines\(normalized\)/);
+  assert.ok(batchBuilderStart >= 0 && batchBuilderEnd > batchBuilderStart);
+  assert.match(renderer, /data-action="copy-selected-doubt" \$\{selectedItems\.length \? "" : "disabled"\}/);
+  assert.match(renderer, /if \(action === "copy-selected-doubt"\)[\s\S]*?buildSelectedDoubtText\(selectedCandidateItems\(\)\)[\s\S]*?await api\.copyText\(text\)/);
+  assert.doesNotMatch(batchBuilder, /buildDoubtText\(/);
+  assert.match(batchBuilder, /candidateAiAnalysis\.buildAnalysisPrompt/);
+  assert.match(batchBuilder, /idLabel: t\("doubt\.id"\)/);
+  assert.match(batchBuilder, /safety: normalized\.safety \|\| normalized\.security/);
+  assert.match(batchBuilder, /guidance: normalized\.guidance \|\| guidance\.text/);
+  assert.equal(ptBR.messages["candidates.copySelectedDoubt"], "Copiar dúvida dos selecionados");
+  assert.equal(enUS.messages["candidates.copySelectedDoubt"], "Copy question for selected items");
+});
+
+test("Candidatos importa, filtra e seleciona classificações da IA sem executar ações nos arquivos", () => {
+  const importActionStart = renderer.indexOf('if (action === "import-ai-analysis")');
+  const importActionEnd = renderer.indexOf('if (action === "select-ai-delete")', importActionStart);
+  const importAction = renderer.slice(importActionStart, importActionEnd);
+  assert.match(renderer, /data-action="import-ai-analysis"/);
+  assert.match(renderer, /<textarea data-modal-input/);
+  assert.match(renderer, /candidateAiAnalysis\.associateAnalysisResponse\(response, visibleCandidates\(\)\)/);
+  assert.match(renderer, /selectControl\("candidateAiFilter"/);
+  assert.match(renderer, /state\.candidateAiResults\.get\(String\(item\.id\)\) === state\.candidateAiFilter/);
+  assert.match(renderer, /if \(action === "select-ai-delete"\)[\s\S]*?candidateBatchActions\.replaceSelectionWithAiDelete\([\s\S]*?state\.selectedIds,[\s\S]*?state\.candidateAiResults,[\s\S]*?canMoveToQuarantine/);
+  assert.ok(importActionStart >= 0 && importActionEnd > importActionStart);
+  assert.doesNotMatch(importAction, /api\.(?:moveToQuarantine|deletePermanent)/);
+});
+
+test("quarentena em lote continua após falhas e resume o resultado", () => {
+  const batchStart = renderer.indexOf("async function quarantineItems(items)");
+  const batchEnd = renderer.indexOf("async function undoLastQuarantine", batchStart);
+  const batch = renderer.slice(batchStart, batchEnd);
+  assert.ok(batchStart >= 0 && batchEnd > batchStart);
+  assert.match(batch, /candidateBatchActions\.processItemsIndependently\(\s*valid/);
+  assert.match(batch, /result\.successes\.map/);
+  assert.match(batch, /result\.failures\.map/);
+  assert.match(batch, /for \(const \{ item \} of result\.successes\)[\s\S]*?removeItemFromCurrentResult\(item\)/);
+  assert.doesNotMatch(batch, /for \(const .*result\.failures[\s\S]*?removeItemFromCurrentResult/);
+  assert.match(batch, /t\("quarantine\.batchSummary"/);
+  assert.doesNotMatch(batch, /catch \(error\)[\s\S]*?return;/);
+  assert.match(renderer, /moveFailureKind\(message\)/);
+});
+
 test("callouts informativos mantêm a mesma moldura em todas as telas", () => {
   for (const title of [
     "Revisão protegida",

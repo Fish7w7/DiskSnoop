@@ -1,5 +1,7 @@
 const api = window.diskScope;
 const overviewComparison = window.diskSnoopOverviewComparison;
+const candidateAiAnalysis = window.diskSnoopCandidateAiAnalysis;
+const candidateBatchActions = window.diskSnoopCandidateBatchActions;
 if (!api) {
   const bootStatus = document.querySelector("[data-boot-status]");
   if (bootStatus) {
@@ -41,6 +43,9 @@ const state = {
   hiddenPaths: new Set(),
   selectedItem: null,
   selectedIds: new Set(),
+  candidateAiResults: new Map(),
+  candidateAiSummary: null,
+  candidateAiFilter: "Todos",
   selectedQuarantineId: "",
   quarantineFilter: "Ativos",
   quarantine: [],
@@ -650,22 +655,40 @@ function isMissingPathError(error) {
 
 function friendlyMoveError(error, item) {
   const message = cleanIpcError(error);
-  if (message.includes("O Windows bloqueou o acesso")
-    || message.includes("EBUSY")
-    || message.includes("ENOTEMPTY")
-    || message.includes("directory not empty")
-    || message.includes("resource busy or locked")) {
+  const kind = candidateBatchActions.moveFailureKind(message);
+  const name = item?.name || t("quarantine.thisItem");
+  if (kind === "in-use") {
     return {
-      title: "Item em uso ou protegido",
-      message: `${item?.name || "Este item"} não pôde ser movido agora. Algum app, driver ou serviço do Windows ainda está usando ou alterando essa pasta. Feche o aplicativo relacionado ou reinicie o PC antes de tentar de novo. O DiskSnoop não mantém cópias parciais quando a operação falha.`,
-      confirmText: "Entendi",
+      title: t("quarantine.moveInUseTitle"),
+      message: t("quarantine.moveInUseMessage", { name }),
+      reason: t("quarantine.moveInUseReason"),
+      confirmText: t("common.understood"),
+      icon: "clock"
+    };
+  }
+  if (kind === "access-denied") {
+    return {
+      title: t("quarantine.moveAccessDeniedTitle"),
+      message: t("quarantine.moveAccessDeniedMessage", { name }),
+      reason: t("quarantine.moveAccessDeniedReason"),
+      confirmText: t("common.understood"),
+      icon: "shield"
+    };
+  }
+  if (kind === "protected") {
+    return {
+      title: t("quarantine.moveProtectedTitle"),
+      message: t("quarantine.moveProtectedMessage", { name }),
+      reason: t("quarantine.moveProtectedReason"),
+      confirmText: t("common.understood"),
       icon: "shield"
     };
   }
   return {
-    title: "Não foi possível mover",
-    message: `${item?.name || "Este item"} não pôde ser movido. ${message}`,
-    confirmText: "Entendi",
+    title: t("quarantine.moveFailedTitle"),
+    message: t("quarantine.moveFailedMessage", { name, reason: message }),
+    reason: message,
+    confirmText: t("common.understood"),
     icon: "shield"
   };
 }
@@ -673,6 +696,13 @@ function friendlyMoveError(error, item) {
 function confirmModal(options) {
   return new Promise((resolve) => {
     state.modal = { ...options, resolve };
+    render();
+  });
+}
+
+function textModal(options) {
+  return new Promise((resolve) => {
+    state.modal = { ...options, multiline: true, resolve };
     render();
   });
 }
@@ -1078,7 +1108,7 @@ function modalOverlay() {
   if (!modal) return "";
   return `
     <div class="overlay modal-overlay">
-      <section class="app-modal">
+      <section class="app-modal ${modal.multiline ? "ai-analysis-modal" : ""} ${escapeHtml(modal.className || "")}">
         <header>
           <span class="modal-icon ${modal.variant === "danger" ? "danger" : ""}">${icon(modal.icon || "shield")}</span>
           <div>
@@ -1093,6 +1123,12 @@ function modalOverlay() {
               <label class="modal-input">
                 <span>Digite ${escapeHtml(modal.requireText)} para confirmar</span>
                 <input data-modal-input value="${escapeHtml(modal.value || "")}" autocomplete="off">
+              </label>
+            ` : ""}
+            ${modal.multiline ? `
+              <label class="modal-input">
+                <span>${escapeHtml(modal.inputLabel || "")}</span>
+                <textarea data-modal-input placeholder="${escapeHtml(modal.placeholder || "")}">${escapeHtml(modal.value || "")}</textarea>
               </label>
             ` : ""}
             ${modal.error ? `<p class="modal-error">${escapeHtml(modal.error)}</p>` : ""}
@@ -1937,6 +1973,7 @@ function filteredCandidates() {
       if ((state.candidateSafety === "Provavel removivel" || state.candidateSafety === "Provável removível") && item.security !== "Provavel removivel" && item.security !== "Provável removível") return false;
       return true;
     })
+    .filter((item) => state.candidateAiFilter === "Todos" || state.candidateAiResults.get(String(item.id)) === state.candidateAiFilter)
     .filter((item) => state.candidateConfidence === "Todas" || confidenceLevel(item)[0] === state.candidateConfidence)
     .sort((a, b) => {
       if (state.candidateAge === "Prioridade") return candidatePriorityScore(b) - candidatePriorityScore(a);
@@ -2073,11 +2110,10 @@ function doubtItemForContext(item, context = "candidate") {
   return item;
 }
 
-function buildDoubtText(item, context = "candidate") {
-  const normalized = doubtItemForContext(item, context);
-  if (!normalized) return "";
+function buildDoubtItemLines(normalized) {
+  if (!normalized) return [];
   const paths = normalized.paths?.length ? normalized.paths : [normalized.path || "-"];
-  const lines = [t("doubt.intro")];
+  const lines = [];
   paths.forEach((itemPath, index) => {
     const pathLabel = paths.length > 1 ? `${t("doubt.path")} ${index + 1}` : t("doubt.path");
     lines.push(`- ${pathLabel}: ${itemPath}`);
@@ -2096,8 +2132,52 @@ function buildDoubtText(item, context = "candidate") {
     const suffix = paths.length > 1 ? ` (${itemPath})` : "";
     lines.push(`- ${t("doubt.signature")}${suffix}: ${signatureLabelFor(result)}`);
   });
+  return lines;
+}
+
+function buildDoubtText(item, context = "candidate") {
+  const normalized = doubtItemForContext(item, context);
+  if (!normalized) return "";
+  const lines = [t("doubt.intro"), ...buildDoubtItemLines(normalized)];
   lines.push("", t("doubt.question"));
   return lines.join("\n");
+}
+
+function buildSelectedDoubtText(items) {
+  const normalizedItems = items.map((item) => {
+    const normalized = doubtItemForContext(item, "candidate");
+    if (!normalized) return null;
+    const guidance = candidateReviewGuidance(normalized);
+    return {
+      ...normalized,
+      safety: normalized.safety || normalized.security,
+      guidance: normalized.guidance || guidance.text
+    };
+  }).filter(Boolean);
+  return candidateAiAnalysis.buildAnalysisPrompt(normalizedItems, {
+    intro: t("doubt.batchIntro"),
+    itemLabel: t("doubt.item"),
+    idLabel: t("doubt.id"),
+    formatDetails: buildDoubtItemLines,
+    footerLines: [t("doubt.batchQuestion"), t("doubt.batchResponseFormat")]
+  });
+}
+
+function resetCandidateAiAnalysis() {
+  state.candidateAiResults.clear();
+  state.candidateAiSummary = null;
+  state.candidateAiFilter = "Todos";
+}
+
+function candidateAiSummaryText() {
+  const summary = state.candidateAiSummary;
+  if (!summary) return "";
+  return t("candidates.aiSummary", {
+    delete: summary.APAGAR,
+    keep: summary.MANTER,
+    review: summary.REVISAR,
+    missing: summary.notFound
+  });
 }
 
 function doubtItemByContext(id, context) {
@@ -2150,6 +2230,7 @@ function selectionSimulationPanel(selectedItems, visibleItems) {
   const safePlanSize = safePlan.reduce((sum, item) => sum + (item.size || 0), 0);
   const previewItems = selectedItems.length ? selectedItems : safePlan.slice(0, 8);
   const previewSize = selectedItems.length ? selectedSize : safePlanSize;
+  const aiDeleteItems = visibleCandidates().filter((item) => state.candidateAiResults.get(String(item.id)) === "APAGAR" && canMoveToQuarantine(item));
   return `
     <section class="simulation-panel">
       <div class="simulation-main">
@@ -2161,8 +2242,12 @@ function selectionSimulationPanel(selectedItems, visibleItems) {
       </div>
       <div class="simulation-actions">
         <button class="secondary" data-action="select-safe-plan" ${safePlan.length ? "" : "disabled"}>${icon("clipboard")}Selecionar plano seguro</button>
+        <button class="secondary" data-action="copy-selected-doubt" ${selectedItems.length ? "" : "disabled"}>${icon("clipboard")}${escapeHtml(t("candidates.copySelectedDoubt"))}</button>
+        <button class="secondary" data-action="import-ai-analysis">${icon("list")}${escapeHtml(t("candidates.importAiAnalysis"))}</button>
+        <button class="secondary" data-action="select-ai-delete" ${aiDeleteItems.length ? "" : "disabled"}>${icon("check")}${escapeHtml(t("candidates.selectAiDelete"))}</button>
         <button class="secondary" data-action="clear-candidate-selection" ${state.selectedIds.size ? "" : "disabled"}>${icon("ban")}Limpar selecao</button>
       </div>
+      ${state.candidateAiSummary ? `<p class="ai-analysis-summary">${escapeHtml(candidateAiSummaryText())}</p>` : ""}
       <div class="simulation-preview">
         ${previewItems.slice(0, 4).map((item) => `
           <span>${escapeHtml(item.name)} <strong>${compactBytes(item.size)}</strong></span>
@@ -2203,6 +2288,7 @@ function candidatesTab() {
         ${selectControl("candidateScope", ["Todos", "Dev", "Instalador", "Cache", "Logs", "Arquivo grande", "Download", "Compactado", "Temporario"], state.candidateScope)}
         ${selectControl("candidateSafety", ["Revisáveis", "Seguro revisar", "Provável removível", "Verificar antes", "Todos"], state.candidateSafety)}
         ${selectControl("candidateConfidence", ["Todas", "Alta", "Média", "Baixa"], state.candidateConfidence)}
+        ${selectControl("candidateAiFilter", [[t("candidates.aiFilterAll"), "Todos"], ["APAGAR", "APAGAR"], ["MANTER", "MANTER"], ["REVISAR", "REVISAR"]], state.candidateAiFilter)}
         ${selectControl("candidateMinSize", [["Relevantes: 10 MB+", 10 * MB], ["Qualquer tamanho", 0], ["100 MB+", 100 * MB], ["1 GB+", GB]], state.candidateMinSize)}
         ${selectControl("candidateAge", ["Prioridade", "Maiores", "Mais antigos"], state.candidateAge)}
       </div>
@@ -3725,6 +3811,7 @@ function restoreLastScan() {
   state.selectedItem = null;
   state.selectedDuplicateId = "";
   state.selectedIds.clear();
+  resetCandidateAiAnalysis();
   syncHiddenPathsFromQuarantine();
   return true;
 }
@@ -4149,33 +4236,52 @@ async function quarantineItems(items) {
   const isLargeBatch = valid.length >= 10 || totalSize >= 10 * GB;
   if (isLargeBatch && !(await offerRestorePoint("lote grande de quarentena"))) return;
   const scanSnapshot = state.scanResult ? structuredClone(state.scanResult) : null;
-  let movedCount = 0;
-  const movedRecords = [];
-  for (const item of valid) {
-    try {
-      const record = await api.moveToQuarantine({ ...item, scanId: state.scanResult?.id || "" });
-      movedRecords.push(record);
-      movedCount += 1;
-      state.selectedIds.delete(item.id);
-      removeItemFromCurrentResult(item);
-    } catch (error) {
-      await refreshData().catch(() => {});
+  const result = await candidateBatchActions.processItemsIndependently(
+    valid,
+    (item) => api.moveToQuarantine({ ...item, scanId: state.scanResult?.id || "" })
+  );
+  for (const { item } of result.successes) {
+    state.selectedIds.delete(item.id);
+    removeItemFromCurrentResult(item);
+  }
+  await refreshData().catch(() => {});
+  const movedRecords = result.successes.map(({ value }) => value);
+  if (movedRecords.length) {
+    state.quarantineUndo = {
+      records: movedRecords,
+      scanSnapshot,
+      scanId: scanSnapshot?.id || ""
+    };
+  } else state.quarantineUndo = null;
+  const summaryMessage = t("quarantine.batchSummary", {
+    moved: result.movedCount,
+    failed: result.failedCount
+  });
+  if (result.failures.length) {
+    if (valid.length === 1) {
+      const [{ item, error }] = result.failures;
       await confirmModal(friendlyMoveError(error, item));
-      if (movedCount) setToast(`${movedCount} item(ns) movido(s). O restante ficou para revisão manual.`);
-      return;
+    } else {
+      await confirmModal({
+        title: t("quarantine.batchFailuresTitle"),
+        message: summaryMessage,
+        details: result.failures.map(({ item, error }) => {
+          const failure = friendlyMoveError(error, item);
+          return `${item?.name || t("quarantine.thisItem")}\n${failure.reason}`;
+        }),
+        confirmText: t("common.understood"),
+        icon: "shield",
+        className: "batch-result-modal"
+      });
     }
   }
-  await refreshData();
-  state.quarantineUndo = {
-    records: movedRecords,
-    scanSnapshot,
-    scanId: scanSnapshot?.id || ""
-  };
   setToast({
-    message: `${movedCount} item(ns) movido(s) para a quarentena.`,
-    action: "undo-quarantine",
-    actionLabel: "Desfazer",
-    duration: 9000
+    message: result.failedCount ? summaryMessage : t("quarantine.moveSuccess", { count: result.movedCount }),
+    ...(movedRecords.length ? {
+      action: "undo-quarantine",
+      actionLabel: t("common.undo"),
+      duration: 9000
+    } : {})
   });
 }
 
@@ -4276,7 +4382,7 @@ function updateSettingsControl(target) {
 function updateSelectField(target) {
   const field = target?.dataset?.field;
   if (!field) return false;
-  if (["sizeFilter", "sort", "fileSizeFilter", "fileSort", "candidateScope", "candidateSafety", "candidateConfidence", "candidateAge", "candidateMinSize", "duplicateMinWaste", "leftoversStatus", "leftoversLocation"].includes(field)) {
+  if (["sizeFilter", "sort", "fileSizeFilter", "fileSort", "candidateScope", "candidateSafety", "candidateConfidence", "candidateAiFilter", "candidateAge", "candidateMinSize", "duplicateMinWaste", "leftoversStatus", "leftoversLocation"].includes(field)) {
     state.detailOverlayOpen = false;
   }
   if (field === "sizeFilter") state.sizeFilter = Number(target.value || 1);
@@ -4293,6 +4399,10 @@ function updateSelectField(target) {
   }
   if (field === "candidateConfidence") {
     state.candidateConfidence = target.value;
+    state.candidateLimit = 80;
+  }
+  if (field === "candidateAiFilter") {
+    state.candidateAiFilter = target.value;
     state.candidateLimit = 80;
   }
   if (field === "candidateAge") {
@@ -4325,7 +4435,7 @@ function updateSelectField(target) {
 function isTableFilterField(field) {
   return [
     "search", "sizeFilter", "sort", "fileSearch", "fileSizeFilter", "fileSort",
-    "candidateSearch", "candidateScope", "candidateSafety", "candidateConfidence",
+    "candidateSearch", "candidateScope", "candidateSafety", "candidateConfidence", "candidateAiFilter",
     "candidateAge", "candidateMinSize", "duplicateSearch", "duplicateMinWaste",
     "leftoversSearch", "leftoversStatus", "leftoversLocation"
   ].includes(field);
@@ -4386,17 +4496,22 @@ document.addEventListener("click", async (event) => {
   if (action === "modal-confirm") {
     const modal = state.modal;
     if (!modal) return;
+    const value = $("[data-modal-input]")?.value || "";
     if (modal.requireText) {
-      const value = $("[data-modal-input]")?.value || "";
       if (value !== modal.requireText) {
         state.modal = { ...modal, value, error: `Digite ${modal.requireText} exatamente para continuar.` };
         render();
         return;
       }
     }
+    if (modal.multiline && !value.trim()) {
+      state.modal = { ...modal, value, error: modal.requiredMessage || t("candidates.aiImportRequired") };
+      render();
+      return;
+    }
     state.modal = null;
     render();
-    modal.resolve(true);
+    modal.resolve(modal.multiline ? value : true);
     return;
   }
 
@@ -4433,6 +4548,7 @@ document.addEventListener("click", async (event) => {
     state.selectedItem = null;
     clearHiddenPaths();
     state.selectedIds.clear();
+    resetCandidateAiAnalysis();
     localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(state.scanResult));
     setToast("Bypass de teste carregado.");
     loadDiskHealth(state.selectedDrive?.letter).catch(() => {});
@@ -4633,6 +4749,54 @@ document.addEventListener("click", async (event) => {
   if (action === "clear-candidate-selection") {
     state.selectedIds.clear();
     render();
+  }
+  if (action === "copy-selected-doubt") {
+    const text = buildSelectedDoubtText(selectedCandidateItems());
+    if (!text) return;
+    try {
+      await api.copyText(text);
+      setToast({ message: t("candidates.copySelectedDoubtToast"), tone: "success" });
+    } catch {
+      setToast({ message: t("candidates.copyDoubtError"), tone: "warning" });
+    }
+    return;
+  }
+  if (action === "import-ai-analysis") {
+    const response = await textModal({
+      title: t("candidates.importAiAnalysis"),
+      message: t("candidates.aiImportHelp"),
+      inputLabel: t("candidates.aiImportLabel"),
+      placeholder: t("candidates.aiImportPlaceholder"),
+      confirmText: t("candidates.aiImportConfirm"),
+      icon: "list"
+    });
+    if (typeof response !== "string") return;
+    const imported = candidateAiAnalysis.associateAnalysisResponse(response, visibleCandidates());
+    state.candidateAiResults = imported.classifications;
+    state.candidateAiSummary = { ...imported.counts, notFound: imported.notFound };
+    state.candidateAiFilter = "Todos";
+    state.candidateLimit = 80;
+    render();
+    setToast({ message: candidateAiSummaryText(), tone: "success" });
+    return;
+  }
+  if (action === "select-ai-delete") {
+    const selection = candidateBatchActions.replaceSelectionWithAiDelete(
+      state.selectedIds,
+      visibleCandidates(),
+      state.candidateAiResults,
+      canMoveToQuarantine
+    );
+    render();
+    setToast({
+      message: t("candidates.aiDeleteSelectionSummary", {
+        selected: selection.selectedCount,
+        total: selection.total,
+        protected: selection.protectedCount
+      }),
+      tone: "success"
+    });
+    return;
   }
   if (action === "show-more-candidates") {
     state.candidateLimit += 80;
@@ -4948,6 +5112,7 @@ document.addEventListener("click", async (event) => {
       state.selectedItem = null;
       state.selectedDuplicateId = "";
       state.selectedIds.clear();
+      resetCandidateAiAnalysis();
       syncHiddenPathsFromQuarantine();
       localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(snapshot));
       render();
@@ -5184,6 +5349,7 @@ api.onScanDone(async (result) => {
   state.selectedItem = null;
   clearHiddenPaths();
   state.selectedIds.clear();
+  resetCandidateAiAnalysis();
   localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(result));
   loadDiskHealth(result.drive?.letter).catch(() => {});
   await refreshData();

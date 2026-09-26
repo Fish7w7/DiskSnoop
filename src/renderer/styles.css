@@ -4072,6 +4072,8 @@ details.settings-card[open] summary::after {
 .modal-points {
   display: grid;
   gap: 8px;
+  max-height: min(360px, 42vh);
+  overflow-y: auto;
   margin: 14px 0 0;
   padding: 0;
   list-style: none;
@@ -4086,6 +4088,11 @@ details.settings-card[open] summary::after {
   color: var(--textMuted);
   font-size: 13px;
   line-height: 1.4;
+  white-space: pre-line;
+}
+
+.batch-result-modal {
+  width: min(620px, 100%);
 }
 
 .modal-points li::before {
@@ -4131,6 +4138,26 @@ details.settings-card[open] summary::after {
 .modal-input input {
   min-height: 42px;
   font-size: 15px;
+}
+
+.ai-analysis-modal {
+  width: min(700px, 100%);
+}
+
+.modal-input textarea {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  font-family: Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-analysis-summary {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--textMuted);
+  font-size: var(--text-sm);
 }
 
 .modal-error {
