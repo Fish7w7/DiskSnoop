@@ -1,7 +1,7 @@
 window.diskSnoopLocalChangelog = {
-  "1.11.0": {
+  "1.12.0": {
     "pt-BR": {
-      title: "DiskSnoop 1.11.0",
+      title: "DiskSnoop 1.12.0",
       sections: [
         {
           title: "Interface",
@@ -27,7 +27,7 @@ window.diskSnoopLocalChangelog = {
       ]
     },
     "en-US": {
-      title: "DiskSnoop 1.11.0",
+      title: "DiskSnoop 1.12.0",
       sections: [
         {
           title: "Interface",
