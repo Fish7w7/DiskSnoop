@@ -403,6 +403,19 @@ test("Configurações apresenta todos os atalhos existentes dentro do aplicativo
   assert.equal(enUS.messages["settings.shortcutsTitle"], "Keyboard shortcuts");
 });
 
+test("Configurações comunica o contexto dos detectores sem criar novas opções", () => {
+  const analysisStart = renderer.indexOf('analysis: `');
+  const quarantineStart = renderer.indexOf('quarantine: `', analysisStart);
+  const analysisSection = renderer.slice(analysisStart, quarantineStart);
+
+  assert.match(analysisSection, /checkLine\(t\("settings\.detectorNodeModules"\), "detectNodeModules"\)/);
+  assert.match(analysisSection, /checkLine\(t\("settings\.detectorBuildCaches"\), "detectBuildCaches"\)/);
+  assert.match(analysisSection, /t\("settings\.detectorsContextNote"\)/);
+  assert.equal((analysisSection.match(/\$\{checkLine\(/g) || []).length, 7);
+  assert.equal(ptBR.messages["settings.detectorsContextNote"].includes("contexto do caminho"), true);
+  assert.equal(enUS.messages["settings.detectorsContextNote"].includes("path context"), true);
+});
+
 test("Overview mostra saúde fail-safe e revisão em lote dos caminhos sem acesso", () => {
   assert.match(renderer, /function diskHealthBadge\(driveLetter\)/);
   assert.match(renderer, /health\?\.status === "healthy"/);

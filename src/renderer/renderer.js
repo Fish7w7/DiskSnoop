@@ -3561,14 +3561,15 @@ function settingsTab() {
       </section>
       <section class="settings-card vertical">
         <h3>Detectores</h3>
-        ${checkLine("Detectar node_modules", "detectNodeModules")}
-        ${checkLine("Detectar builds e caches", "detectBuildCaches")}
+        ${checkLine(t("settings.detectorNodeModules"), "detectNodeModules")}
+        ${checkLine(t("settings.detectorBuildCaches"), "detectBuildCaches")}
         ${checkLine("Detectar instaladores antigos", "detectOldInstallers")}
         ${checkLine("Detectar downloads antigos", "detectOldDownloads")}
         ${checkLine("Detectar compactados antigos", "detectOldArchives")}
         ${checkLine("Detectar logs grandes e temporários", "detectLogsAndTemps")}
         ${checkLine("Confirmar duplicados com hash SHA-256", "verifyDuplicateHashes")}
-        <span>Itens sensíveis como Windows, System32, drivers e programas ativos continuam fora dos candidatos normais.</span>
+        <span>${escapeHtml(t("settings.detectorsSafetyNote"))}</span>
+        <span>${escapeHtml(t("settings.detectorsContextNote"))}</span>
       </section>
     `,
     quarantine: `
