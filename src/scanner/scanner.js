@@ -247,29 +247,66 @@ function summarizeChild(record, child) {
   if (record.children.length > 8) record.children.length = 8;
 }
 
-function folderType(name, dirPath) {
+function normalizedWindowsPath(value) {
+  return String(value || "").replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
+}
+
+function isInstalledSoftwarePath(itemPath) {
+  const normalized = normalizedWindowsPath(itemPath);
+  return normalized.includes("\\program files\\")
+    || normalized.includes("\\program files (x86)\\")
+    || normalized.includes("\\windowsapps\\")
+    || normalized.includes("\\appdata\\local\\")
+    || normalized.includes("\\appdata\\roaming\\")
+    || /\\\.vscode(?:-insiders)?\\extensions\\/.test(normalized)
+    || /\\app\.asar(?:\.unpacked)?(?:\\|$)/.test(normalized)
+    || /\\resources\\app(?:\\|$)/.test(normalized)
+    || /\\(?:install|installation|launchers?|runtimes?|sdks?|tools)(?:\\|$)/.test(normalized);
+}
+
+function folderType(name, dirPath, settings = config || {}) {
   const lower = name.toLowerCase();
+  if (devFolders.has(lower) && isInstalledSoftwarePath(dirPath)) return null;
   if (lower === "node_modules") {
-    if (config.detectNodeModules === false) return null;
+    if (settings.detectNodeModules === false) return null;
     return { type: "Projetos dev", reason: "Dependencias Node podem ser recriadas com npm install quando o projeto ainda existe." };
   }
   if (lower === ".venv") {
-    if (config.detectBuildCaches === false) return null;
+    if (settings.detectBuildCaches === false) return null;
     return { type: "Projetos dev", reason: "Ambiente Python local geralmente pode ser recriado a partir das dependencias do projeto." };
   }
   if (["dist", "build", ".next", ".turbo", "coverage", "target", "bin", "obj"].includes(lower)) {
-    if (config.detectBuildCaches === false) return null;
+    if (settings.detectBuildCaches === false) return null;
     return { type: "Projetos dev", reason: "Pasta de build/cache de projeto; costuma ser recriavel pelo processo de desenvolvimento." };
   }
   if (lower.includes("cache") || lower === ".cache") {
-    if (config.detectBuildCaches === false) return null;
+    if (settings.detectBuildCaches === false) return null;
     return { type: "Caches", reason: "Cache local detectado. Revise antes, mas normalmente e um dado recriavel." };
   }
   if (isDownloadsPath(dirPath)) {
-    if (config.detectOldDownloads === false) return null;
+    if (settings.detectOldDownloads === false) return null;
     return { type: "Downloads antigos", reason: "Conteudo na pasta Downloads com idade acima do limite configurado." };
   }
   return null;
+}
+
+function isChildPath(childPath, parentPath) {
+  const child = normalizedWindowsPath(childPath);
+  const parent = normalizedWindowsPath(parentPath);
+  return Boolean(child && parent && child !== parent && child.startsWith(`${parent}\\`));
+}
+
+function hasEquivalentCandidateClassification(left, right) {
+  return left.type === right.type
+    && (left.security || left.risk || "") === (right.security || right.risk || "");
+}
+
+function removeRedundantChildCandidates(candidates) {
+  return candidates.filter((candidate, index) => !candidates.some((possibleParent, parentIndex) => (
+    index !== parentIndex
+      && hasEquivalentCandidateClassification(candidate, possibleParent)
+      && isChildPath(candidate.path, possibleParent.path)
+  )));
 }
 
 function fileCandidate(filePath, stat) {
@@ -460,6 +497,7 @@ async function start(payload) {
       if (summary) rootSummaries.push(summary);
     }
     state.largeFolders.sort((a, b) => b.size - a.size);
+    state.candidates = removeRedundantChildCandidates(state.candidates);
     state.candidates.sort((a, b) => b.size - a.size);
     const result = {
       id: `${Date.now()}`,
@@ -500,6 +538,9 @@ process.on("message", (message) => {
 
 module.exports = {
   buildLargeFolderItem,
+  folderType,
+  isInstalledSoftwarePath,
+  removeRedundantChildCandidates,
   recordSkippedPath,
   skippedReason
 };
