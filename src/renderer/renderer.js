@@ -27,7 +27,7 @@ const HIDDEN_PATHS_KEY = "disksnoop:hiddenPaths";
 const SAMPLE_WINDOW_MS = 10000;
 const progressSamples = [];
 let scanStartedAt = 0;
-let APP_VERSION_LABEL = "1.12.0";
+let APP_VERSION_LABEL = "1.13.0";
 
 const state = {
   screen: "welcome",

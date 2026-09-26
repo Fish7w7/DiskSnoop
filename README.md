@@ -19,7 +19,7 @@ Na página da release, escolha:
 
 > Requer Windows 10 ou superior em sistema 64 bits.
 
-## Novidades da versão 1.12.0
+## Novidades da versão 1.13.0
 
 * O progresso do scan agora calcula uma estimativa aproximada de tempo restante usando a velocidade dos últimos 10 segundos.
 * Os painéis de detalhes ganharam um botão discreto para copiar somente o caminho do item.
