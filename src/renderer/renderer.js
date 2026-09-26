@@ -1,5 +1,7 @@
 const api = window.diskScope;
 const overviewComparison = window.diskSnoopOverviewComparison;
+const largeFolderTree = window.diskSnoopLargeFolderTree;
+const contentBrowser = window.diskSnoopContentBrowser;
 const candidateAiAnalysis = window.diskSnoopCandidateAiAnalysis;
 const candidateBatchActions = window.diskSnoopCandidateBatchActions;
 if (!api) {
@@ -43,6 +45,7 @@ const state = {
   hiddenPaths: new Set(),
   selectedItem: null,
   selectedIds: new Set(),
+  expandedLargeFolderIds: new Set(),
   candidateAiResults: new Map(),
   candidateAiSummary: null,
   candidateAiFilter: "Todos",
@@ -1146,34 +1149,246 @@ function modalOverlay() {
 function contentPreviewOverlay() {
   if (!state.contentPreview) return "";
   const preview = state.contentPreview;
+  const navigation = preview.navigation;
+  const breadcrumbs = contentBrowser.compactContentBreadcrumbs(contentBrowser.contentBreadcrumbs(navigation), 4);
+  const items = contentBrowser.sortContentItems(preview.items, preview.sortField, preview.sortDirection);
+  const unknownFolders = contentBrowser.unknownContentFolders(preview.items);
+  const bulkCalculation = preview.bulkCalculation;
+  const selectedItem = contentPreviewSelectedItem();
+  const sortLabel = (field) => preview.sortField === field ? (preview.sortDirection === "asc" ? " ↑" : " ↓") : "";
   return `
     <div class="overlay content-preview-overlay">
-      <section class="content-preview">
+      <section class="content-preview" role="dialog" aria-modal="true" aria-labelledby="content-preview-title" tabindex="-1">
         <header>
           <div>
-            <h2>Conteúdo</h2>
-            <p>${escapeHtml(preview.path)}</p>
+            <h2 id="content-preview-title">${escapeHtml(t("content.title"))}</h2>
+            <p title="${escapeHtml(navigation.currentPath)}">${escapeHtml(navigation.currentPath)}</p>
           </div>
-          <button class="secondary" data-action="close-content-preview">Fechar</button>
+          <button class="secondary" data-action="close-content-preview">${escapeHtml(t("content.close"))}</button>
         </header>
+        <div class="content-browser-toolbar">
+          <button class="secondary content-browser-back" data-action="content-back" ${contentBrowser.canGoBackContent(navigation) ? "" : "disabled"}>${icon("chevron")}${escapeHtml(t("content.back"))}</button>
+          <nav class="content-breadcrumb" aria-label="${escapeHtml(t("content.breadcrumb"))}">
+            ${breadcrumbs.map((crumb, index) => `
+              ${index ? `<span aria-hidden="true">›</span>` : ""}
+              ${crumb.isEllipsis
+                ? `<span class="content-breadcrumb-ellipsis" title="${escapeHtml(crumb.hiddenLabels.join(" › "))}">…</span>`
+                : `<button data-action="content-breadcrumb" data-path="${escapeHtml(crumb.path)}" title="${escapeHtml(crumb.path)}" ${index === breadcrumbs.length - 1 ? "disabled" : ""}>${escapeHtml(crumb.label)}</button>`}
+            `).join("")}
+          </nav>
+          <div class="content-browser-toolbar-actions">
+            <button class="secondary" data-action="calculate-all-content-sizes"
+              ${preview.loading || bulkCalculation.running || preview.calculatingPaths.size || !unknownFolders.length ? "disabled" : ""}>
+              ${escapeHtml(bulkCalculation.running
+                ? t("content.calculatingAllProgress", { completed: bulkCalculation.completed, total: bulkCalculation.total })
+                : t("content.calculateAll"))}
+            </button>
+            <button class="secondary" data-action="content-refresh" ${bulkCalculation.running ? "disabled" : ""}>${icon("refresh")}${escapeHtml(t("content.refresh"))}</button>
+          </div>
+        </div>
+        <div class="content-browser-actions">
+          <span>${escapeHtml(t("content.doubleClickHint"))}</span>
+          <div>
+            <button class="secondary" data-action="content-open-item" ${selectedItem ? "" : "disabled"}>${icon("external")}${escapeHtml(t("content.openExplorer"))}</button>
+            <button class="secondary" data-action="content-copy-path" ${selectedItem ? "" : "disabled"}>${icon("copy")}${escapeHtml(t("common.copyPath"))}</button>
+          </div>
+        </div>
+        ${bulkCalculation.hasRun && !bulkCalculation.running ? `
+          <div class="content-browser-measure-summary" role="status">
+            ${escapeHtml(t("content.calculateAllSummary", { success: bulkCalculation.success, failed: bulkCalculation.failed }))}
+          </div>
+        ` : ""}
+        ${preview.error ? `<div class="content-browser-error" role="alert">${icon("warning")}<span>${escapeHtml(preview.error)}</span></div>` : ""}
         <div class="preview-table">
           <table>
-            <thead><tr><th>Nome</th><th>Tipo</th><th>Tamanho</th><th>Modificado</th></tr></thead>
+            <thead><tr>
+              <th><button data-action="content-sort" data-sort="name">${escapeHtml(t("content.name"))}${sortLabel("name")}</button></th>
+              <th><button data-action="content-sort" data-sort="type">${escapeHtml(t("content.type"))}${sortLabel("type")}</button></th>
+              <th><button data-action="content-sort" data-sort="size">${escapeHtml(t("content.size"))}${sortLabel("size")}</button></th>
+              <th><button data-action="content-sort" data-sort="modified">${escapeHtml(t("content.modified"))}${sortLabel("modified")}</button></th>
+            </tr></thead>
             <tbody>
-              ${preview.items.map((item) => `
-                <tr>
-                  <td class="name-cell"><span class="folder-icon">${icon(item.type === "Pasta" ? "folder" : "file")}</span><span>${escapeHtml(item.name)}</span></td>
-                  <td>${escapeHtml(item.type)}</td>
-                  <td>${item.type === "Pasta" ? "-" : compactBytes(item.size)}</td>
-                  <td>${relativeDate(item.modifiedAt)}</td>
-                </tr>
-              `).join("") || `<tr><td colspan="4" class="empty-soft">Pasta vazia ou inacessível.</td></tr>`}
+              ${preview.loading
+                ? `<tr><td colspan="4" class="empty-soft">${escapeHtml(t("content.loading"))}</td></tr>`
+                : items.map((item) => {
+                  const isFolder = item.type === "Pasta";
+                  const itemKey = contentBrowser.normalizeBrowserPath(item.path);
+                  const calculating = preview.calculatingPaths.has(itemKey);
+                  const measurementError = preview.measurementErrors.get(itemKey);
+                  return `
+                    <tr class="${contentBrowser.normalizeBrowserPath(preview.selectedPath) === itemKey ? "selected" : ""}"
+                        data-action="select-content-item"
+                        data-path="${escapeHtml(item.path)}"
+                        aria-selected="${contentBrowser.normalizeBrowserPath(preview.selectedPath) === itemKey}"
+                        ${isFolder ? 'data-content-directory="true"' : ""}>
+                      <td class="name-cell" title="${escapeHtml(item.path)}"><span class="folder-icon">${icon(isFolder ? "folder" : "file")}</span><span>${escapeHtml(item.name)}</span></td>
+                      <td>${escapeHtml(t(isFolder ? "content.folder" : "content.file"))}</td>
+                      <td>${item.sizeKnown
+                        ? compactBytes(item.displaySize)
+                        : `<span class="content-size-unknown">— ${measurementError ? `<span class="content-size-error" title="${escapeHtml(measurementError)}">${escapeHtml(t("content.measureFailedShort"))}</span>` : ""}<button class="table-action" data-action="calculate-content-size" data-path="${escapeHtml(item.path)}" ${calculating || bulkCalculation.running ? "disabled" : ""}>${escapeHtml(t(calculating ? "content.calculating" : "content.calculateSize"))}</button></span>`}
+                      </td>
+                      <td>${relativeDate(item.modifiedAt)}</td>
+                    </tr>
+                  `;
+                }).join("") || `<tr><td colspan="4" class="empty-soft">${escapeHtml(preview.error ? t("content.readFailed") : t("content.empty"))}</td></tr>`}
             </tbody>
           </table>
         </div>
       </section>
     </div>
   `;
+}
+
+function contentPreviewSelectedItem() {
+  const preview = state.contentPreview;
+  if (!preview?.selectedPath) return null;
+  const selectedKey = contentBrowser.normalizeBrowserPath(preview.selectedPath);
+  return preview.items.find((item) => contentBrowser.normalizeBrowserPath(item.path) === selectedKey) || null;
+}
+
+function selectContentPreviewItem(targetPath) {
+  const preview = state.contentPreview;
+  if (!preview) return;
+  const selectedKey = contentBrowser.normalizeBrowserPath(targetPath);
+  const selectedItem = preview.items.find((item) => contentBrowser.normalizeBrowserPath(item.path) === selectedKey) || null;
+  preview.selectedPath = selectedItem?.path || "";
+  const panel = document.querySelector(".content-preview");
+  panel?.querySelectorAll('[data-action="select-content-item"]').forEach((row) => {
+    const selected = contentBrowser.normalizeBrowserPath(row.dataset.path) === selectedKey;
+    row.classList.toggle("selected", selected);
+    row.setAttribute("aria-selected", String(selected));
+  });
+  panel?.querySelectorAll('[data-action="content-open-item"], [data-action="content-copy-path"]').forEach((button) => {
+    button.disabled = !selectedItem;
+  });
+}
+
+function decorateContentPreviewItems(preview, items) {
+  const scanSizes = contentBrowser.knownLargeFolderSizes(state.scanResult?.largeFolders || []);
+  return contentBrowser.decorateContentItems(items, scanSizes, preview.sizeCache);
+}
+
+async function loadContentPreviewDirectory(targetPath) {
+  const preview = state.contentPreview;
+  if (!preview || !contentBrowser.canNavigateWithinRoot(preview.navigation.rootPath, targetPath)) return false;
+  const requestId = ++preview.requestId;
+  preview.loading = true;
+  preview.error = "";
+  preview.items = [];
+  preview.selectedPath = "";
+  render();
+  try {
+    const items = await api.listContents(targetPath);
+    if (state.contentPreview !== preview || preview.requestId !== requestId) return false;
+    preview.items = decorateContentPreviewItems(preview, items);
+    preview.loading = false;
+    render();
+    return true;
+  } catch (error) {
+    if (state.contentPreview !== preview || preview.requestId !== requestId) return false;
+    preview.loading = false;
+    preview.error = t("content.readError", { error: cleanIpcError(error) });
+    preview.items = [];
+    render();
+    return false;
+  }
+}
+
+async function openContentPreview(item) {
+  if (!item?.path) return;
+  const navigation = contentBrowser.createContentNavigation(item.path);
+  state.contentPreview = {
+    navigation,
+    items: [],
+    selectedPath: "",
+    sizeCache: new Map(),
+    calculatingPaths: new Set(),
+    measurementErrors: new Map(),
+    bulkCalculation: { running: false, completed: 0, total: 0, success: 0, failed: 0, hasRun: false },
+    sortField: "name",
+    sortDirection: "asc",
+    loading: true,
+    error: "",
+    requestId: 0
+  };
+  await loadContentPreviewDirectory(navigation.currentPath);
+}
+
+async function enterContentPreviewDirectory(targetPath) {
+  const preview = state.contentPreview;
+  if (!preview || !contentBrowser.navigateContentPath(preview.navigation, targetPath)) return false;
+  return loadContentPreviewDirectory(preview.navigation.currentPath);
+}
+
+async function backContentPreview() {
+  const preview = state.contentPreview;
+  if (!preview) return false;
+  const previousPath = contentBrowser.backContentPath(preview.navigation);
+  if (!previousPath) return false;
+  return loadContentPreviewDirectory(previousPath);
+}
+
+async function calculateContentItemSize(targetPath) {
+  const preview = state.contentPreview;
+  const itemKey = contentBrowser.normalizeBrowserPath(targetPath);
+  const item = preview?.items.find((entry) => contentBrowser.normalizeBrowserPath(entry.path) === itemKey);
+  if (!preview || !item || item.type !== "Pasta" || item.sizeKnown || preview.calculatingPaths.has(itemKey) || preview.bulkCalculation.running) return;
+  preview.calculatingPaths.add(itemKey);
+  preview.measurementErrors.delete(itemKey);
+  preview.error = "";
+  render();
+  try {
+    const result = await api.measurePathSize(targetPath);
+    if (state.contentPreview !== preview) return;
+    preview.sizeCache.set(itemKey, Number(result?.size || 0));
+    preview.measurementErrors.delete(itemKey);
+    preview.items = decorateContentPreviewItems(preview, preview.items);
+  } catch (error) {
+    if (state.contentPreview === preview) preview.measurementErrors.set(itemKey, cleanIpcError(error));
+  } finally {
+    preview.calculatingPaths.delete(itemKey);
+    if (state.contentPreview === preview) render();
+  }
+}
+
+async function calculateAllContentSizes() {
+  const preview = state.contentPreview;
+  if (!preview || preview.loading || preview.bulkCalculation.running || preview.calculatingPaths.size) return;
+  const targets = contentBrowser.unknownContentFolders(preview.items);
+  if (!targets.length) return;
+  preview.bulkCalculation = {
+    running: true,
+    completed: 0,
+    total: targets.length,
+    success: 0,
+    failed: 0,
+    hasRun: false
+  };
+  render();
+  await contentBrowser.measureUnknownContentFolders(
+    targets,
+    (item) => api.measurePathSize(item.path),
+    ({ item, ok, size, error, completed, total }) => {
+      if (state.contentPreview !== preview) return;
+      const itemKey = contentBrowser.normalizeBrowserPath(item.path);
+      if (ok) {
+        preview.sizeCache.set(itemKey, size);
+        preview.measurementErrors.delete(itemKey);
+        preview.bulkCalculation.success += 1;
+      } else {
+        preview.measurementErrors.set(itemKey, cleanIpcError(error));
+        preview.bulkCalculation.failed += 1;
+      }
+      preview.bulkCalculation.completed = completed;
+      preview.bulkCalculation.total = total;
+      preview.items = decorateContentPreviewItems(preview, preview.items);
+      render();
+    }
+  );
+  if (state.contentPreview !== preview) return;
+  preview.bulkCalculation.running = false;
+  preview.bulkCalculation.hasRun = true;
+  render();
 }
 
 function renderTab() {
@@ -1660,16 +1875,33 @@ function ignoredPresetCards() {
   `;
 }
 
-function filteredFolders() {
+function folderMatchesFilters(item) {
   const query = state.search.toLowerCase();
-  return [...visibleLargeFolders()]
-    .filter((item) => !query || item.path.toLowerCase().includes(query) || item.name.toLowerCase().includes(query))
-    .filter((item) => item.size >= state.sizeFilter * GB)
-    .sort((a, b) => {
-      if (state.sort === "date") return new Date(b.modifiedAt || 0) - new Date(a.modifiedAt || 0);
-      if (state.sort === "risk") return riskWeight(b.risk) - riskWeight(a.risk);
-      return b.size - a.size;
-    });
+  return (!query || item.path.toLowerCase().includes(query) || item.name.toLowerCase().includes(query))
+    && item.size >= state.sizeFilter * GB;
+}
+
+function compareRootFolders(left, right) {
+  if (state.sort === "date") return new Date(right.modifiedAt || 0) - new Date(left.modifiedAt || 0);
+  if (state.sort === "risk") return riskWeight(right.risk) - riskWeight(left.risk);
+  return right.size - left.size;
+}
+
+function largeFolderTreeView() {
+  const roots = largeFolderTree.buildLargeFolderTree(visibleLargeFolders(), compareRootFolders);
+  const filteredRoots = largeFolderTree.filterLargeFolderTree(roots, folderMatchesFilters);
+  const rows = largeFolderTree.flattenLargeFolderTree(filteredRoots, state.expandedLargeFolderIds, {
+    revealContext: Boolean(state.search.trim())
+  });
+  return { roots: filteredRoots, rows };
+}
+
+function filteredFolders() {
+  return largeFolderTreeView().rows.map((row) => row.item);
+}
+
+function resetLargeFolderExpansion() {
+  state.expandedLargeFolderIds.clear();
 }
 
 function riskWeight(value) {
@@ -1687,7 +1919,8 @@ function folderRisk(item) {
 }
 
 function foldersTab() {
-  const items = filteredFolders();
+  const treeView = largeFolderTreeView();
+  const items = largeFolderTree.collectLargeFolderTreeItems(treeView.roots);
   const selected = items.find((item) => item.id === state.selectedItem?.id) || null;
   if (state.selectedItem?.id !== selected?.id) state.selectedItem = selected || null;
   return `
@@ -1706,15 +1939,19 @@ function foldersTab() {
             <table class="folders-table">
               <thead><tr><th>Nome</th><th>Tamanho</th><th>Modificado</th><th>Risco</th></tr></thead>
               <tbody>
-                ${items.slice(0, 60).map((item) => {
+                ${treeView.rows.slice(0, 60).map((row) => {
+                  const item = row.item;
                   const [label, kind] = folderRisk(item);
                   const protection = protectedPathInfo(item.path);
                   return `
                     <tr class="${state.selectedItem?.id === item.id ? "selected" : ""}" data-action="select-folder" data-id="${escapeHtml(item.id)}">
-                      <td class="name-cell" title="${escapeHtml(item.name)}">
-                        <div class="name-cell-layout">
+                      <td class="name-cell">
+                        <div class="name-cell-layout folder-tree-row" style="--folder-tree-depth:${row.depth}">
+                          ${row.hasChildren
+                            ? `<button type="button" class="folder-tree-toggle" data-action="toggle-folder-tree" data-id="${escapeHtml(row.key)}" aria-expanded="${row.expanded}" aria-label="${escapeHtml(`${t(row.expanded ? "folders.collapse" : "folders.expand")} ${row.label}`)}">${row.expanded ? "▾" : "▸"}</button>`
+                            : `<span class="folder-tree-spacer" aria-hidden="true"></span>`}
                           <span class="folder-icon">${icon("folder")}</span>
-                          <span class="name-cell-copy">${escapeHtml(item.name)}</span>
+                          <span class="name-cell-copy" data-overflow-tooltip="${escapeHtml(`${row.label}\n\n${item.path}`)}">${escapeHtml(row.label)}</span>
                           ${protection.protected ? `<span class="protection-marker" title="${escapeHtml(`Protegido: ${protection.reason}`)}" aria-label="Componente protegido">${icon("lock")}</span>` : ""}
                         </div>
                       </td>
@@ -3689,6 +3926,15 @@ function checkLine(label, field) {
   return `<label class="check-line"><input type="checkbox" data-setting-toggle="${field}" ${checked}>${escapeHtml(label)}</label>`;
 }
 
+function updateOverflowTooltip(element) {
+  if (!element?.dataset?.overflowTooltip) return;
+  if (element.scrollWidth > element.clientWidth + 1) {
+    element.setAttribute("title", element.dataset.overflowTooltip);
+  } else {
+    element.removeAttribute("title");
+  }
+}
+
 function render({ suppressDetailAnimation = false } = {}) {
   window.DiskSnoopCustomSelect?.close();
   applyTheme();
@@ -3720,8 +3966,10 @@ function render({ suppressDetailAnimation = false } = {}) {
   }
   const detailOverlay = $(".detail-overlay");
   if (suppressDetailAnimation) detailOverlay?.classList.add("no-entry-animation");
+  const contentPreviewPanel = $(".content-preview");
   const detailPanel = $(".detail-overlay-panel");
-  if (detailPanel) detailPanel.focus({ preventScroll: true });
+  if (contentPreviewPanel) contentPreviewPanel.focus({ preventScroll: true });
+  else if (detailPanel) detailPanel.focus({ preventScroll: true });
   lastRenderedTab = state.screen === "app" ? state.tab : null;
 }
 
@@ -3805,6 +4053,7 @@ function restoreLastScan() {
   const cached = readCachedScan();
   if (!cached) return false;
   state.scanResult = cached;
+  resetLargeFolderExpansion();
   state.selectedDrive = state.drives.find((drive) => drive.letter === cached.drive.letter) || cached.drive;
   state.screen = "app";
   state.tab = "overview";
@@ -3929,6 +4178,7 @@ async function triggerNewScan() {
   state.selectedItem = null;
   state.selectedDuplicateId = "";
   state.detailOverlayOpen = false;
+  resetLargeFolderExpansion();
   clearHiddenPaths();
   state.selectedIds.clear();
   render();
@@ -4547,6 +4797,7 @@ document.addEventListener("click", async (event) => {
     state.reportMode = "test";
     state.scanComparison = null;
     state.selectedItem = null;
+    resetLargeFolderExpansion();
     clearHiddenPaths();
     state.selectedIds.clear();
     resetCandidateAiAnalysis();
@@ -4693,6 +4944,14 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "retry-inaccessible") {
     await retryInaccessiblePaths();
+    return;
+  }
+  if (action === "toggle-folder-tree") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.expandedLargeFolderIds.has(id)) state.expandedLargeFolderIds.delete(id);
+    else state.expandedLargeFolderIds.add(id);
+    render();
     return;
   }
   if (action === "select-folder") {
@@ -4853,25 +5112,52 @@ document.addEventListener("click", async (event) => {
   if (action === "open-selected" && state.selectedItem) await showPathWithFeedback(state.selectedItem.path, state.selectedItem);
   if (action === "open-path") await showPathWithFeedback(target.dataset.path);
   if (action === "show-selected" && state.selectedItem) {
-    try {
-      if (api.pathsExist) {
-        const exists = await api.pathsExist([state.selectedItem.path]);
-        if (exists[state.selectedItem.path] === false) {
-          forgetMissingItemFromUi(state.selectedItem.path, state.selectedItem);
-          setToast("Esse item nao existe mais e saiu do relatorio atual.");
-          return;
-        }
-      }
-      const items = await api.listContents(state.selectedItem.path);
-      state.contentPreview = { path: state.selectedItem.path, items };
-      render();
-    } catch (error) {
-      setToast(`Não foi possível listar o conteúdo: ${error.message}`);
-    }
+    await openContentPreview(state.selectedItem);
   }
   if (action === "close-content-preview") {
     state.contentPreview = null;
     render();
+  }
+  if (action === "select-content-item" && state.contentPreview) {
+    selectContentPreviewItem(target.dataset.path || "");
+    return;
+  }
+  if (action === "content-back") await backContentPreview();
+  if (action === "content-breadcrumb" && target.dataset.path) await enterContentPreviewDirectory(target.dataset.path);
+  if (action === "content-refresh" && state.contentPreview) {
+    await loadContentPreviewDirectory(state.contentPreview.navigation.currentPath);
+  }
+  if (action === "content-sort" && state.contentPreview) {
+    const field = target.dataset.sort || "name";
+    if (state.contentPreview.sortField === field) {
+      state.contentPreview.sortDirection = state.contentPreview.sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.contentPreview.sortField = field;
+      state.contentPreview.sortDirection = "asc";
+    }
+    render();
+  }
+  if (action === "calculate-content-size" && target.dataset.path) {
+    event.stopPropagation();
+    await calculateContentItemSize(target.dataset.path);
+  }
+  if (action === "calculate-all-content-sizes") {
+    await calculateAllContentSizes();
+  }
+  if (action === "content-open-item") {
+    const item = contentPreviewSelectedItem();
+    if (item) await showPathWithFeedback(item.path);
+  }
+  if (action === "content-copy-path") {
+    const item = contentPreviewSelectedItem();
+    if (item) {
+      try {
+        await api.copyText(item.path);
+        setToast({ message: t("common.pathCopiedToast"), tone: "success" });
+      } catch {
+        setToast({ message: t("common.pathCopyError"), tone: "warning" });
+      }
+    }
   }
   if (action === "ignore-selected" && state.selectedItem) await ignoreItem(state.selectedItem);
   if (action === "quarantine-selected-item" && state.selectedItem) await quarantineItems([state.selectedItem]);
@@ -5105,6 +5391,7 @@ document.addEventListener("click", async (event) => {
         return;
       }
       state.scanResult = snapshot;
+      resetLargeFolderExpansion();
       state.selectedDrive = state.drives.find((drive) => drive.letter === snapshot.drive?.letter) || snapshot.drive || state.selectedDrive;
       state.screen = "app";
       state.tab = "overview";
@@ -5334,6 +5621,28 @@ document.addEventListener("change", async (event) => {
   }
 });
 
+document.addEventListener("mouseover", (event) => {
+  updateOverflowTooltip(event.target.closest?.("[data-overflow-tooltip]"));
+});
+
+document.addEventListener("focusin", (event) => {
+  updateOverflowTooltip(event.target.closest?.("[data-overflow-tooltip]"));
+});
+
+document.addEventListener("dblclick", async (event) => {
+  const row = event.target.closest?.('[data-content-directory="true"]');
+  if (!row || !state.contentPreview) return;
+  const nestedAction = event.target.closest?.("[data-action]");
+  if (nestedAction && nestedAction !== row) return;
+  const preview = state.contentPreview;
+  const itemKey = contentBrowser.normalizeBrowserPath(row.dataset.path);
+  const item = preview.items.find((entry) => contentBrowser.normalizeBrowserPath(entry.path) === itemKey);
+  if (!item || item.type !== "Pasta" || !contentBrowser.canNavigateWithinRoot(preview.navigation.rootPath, item.path)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  await enterContentPreviewDirectory(item.path);
+});
+
 api.onScanProgress((payload) => {
   state.scanProgress = payload;
   recordProgressSample(payload?.mappedBytes);
@@ -5348,6 +5657,7 @@ api.onScanDone(async (result) => {
   state.reportMode = "current";
   state.scanComparison = null;
   state.selectedItem = null;
+  resetLargeFolderExpansion();
   clearHiddenPaths();
   state.selectedIds.clear();
   resetCandidateAiAnalysis();

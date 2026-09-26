@@ -40,6 +40,32 @@ test("Pastas Grandes oferece texto de dúvida com contexto de segurança", () =>
   assert.match(renderer, /if \(context === "folder"\) return findFolder\(id\) \|\| state\.selectedItem;/);
 });
 
+test("Pastas Grandes separa expansão da abertura do painel e reinicia a árvore em novo scan", () => {
+  const toggleStart = renderer.indexOf('if (action === "toggle-folder-tree")');
+  const selectStart = renderer.indexOf('if (action === "select-folder")', toggleStart);
+  const toggleHandler = renderer.slice(toggleStart, selectStart);
+  const selectHandler = renderer.slice(selectStart, renderer.indexOf('if (action === "select-file")', selectStart));
+  const scanDoneStart = renderer.indexOf("api.onScanDone(async (result) =>");
+  const scanDoneHandler = renderer.slice(scanDoneStart, renderer.indexOf("api.onScanError", scanDoneStart));
+
+  assert.match(renderer, /data-action="toggle-folder-tree"/);
+  assert.match(toggleHandler, /event\.stopPropagation\(\)/);
+  assert.match(toggleHandler, /state\.expandedLargeFolderIds\.(?:add|delete)\(id\)/);
+  assert.doesNotMatch(toggleHandler, /detailOverlayOpen/);
+  assert.match(selectHandler, /state\.selectedItem = findFolder\(id\)/);
+  assert.match(selectHandler, /state\.detailOverlayOpen = true/);
+  assert.match(scanDoneHandler, /resetLargeFolderExpansion\(\)/);
+});
+
+test("Pastas Grandes oferece tooltip apenas quando o nome está truncado e amplia o hitbox da seta", () => {
+  assert.match(renderer, /data-overflow-tooltip="\$\{escapeHtml\(`\$\{row\.label\}\\n\\n\$\{item\.path\}`\)\}"/);
+  assert.match(renderer, /function updateOverflowTooltip\(element\)[\s\S]*?element\.scrollWidth > element\.clientWidth \+ 1[\s\S]*?setAttribute\("title"[\s\S]*?removeAttribute\("title"\)/);
+  assert.match(renderer, /document\.addEventListener\("mouseover"[\s\S]*?updateOverflowTooltip/);
+  assert.match(css, /\.folder-tree-toggle,[\s\S]*?\.folder-tree-spacer\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*32px;/);
+  assert.match(css, /\.folder-tree-toggle\s*\{[\s\S]*?cursor:\s*pointer;[\s\S]*?touch-action:\s*manipulation;/);
+  assert.match(css, /\.folder-tree-toggle:focus-visible\s*\{[\s\S]*?outline:/);
+});
+
 test("Candidatos copia uma única dúvida para todos os itens selecionados", () => {
   const batchBuilderStart = renderer.indexOf("function buildSelectedDoubtText(items)");
   const batchBuilderEnd = renderer.indexOf("function doubtItemByContext", batchBuilderStart);

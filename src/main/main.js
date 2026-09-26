@@ -11,6 +11,7 @@ const { createAuthenticodeVerifier } = require("./authenticode");
 const { createDiskHealthService } = require("./disk-health");
 const {
   createElevatedRechecker,
+  measurePath,
   parseElevatedRecheckArgs,
   runElevatedWorker,
   validateHandoffPaths
@@ -1324,40 +1325,45 @@ ipcMain.handle("update:rememberLater", async () => {
 ipcMain.handle("quarantine:list", async () => syncedQuarantine());
 
 ipcMain.handle("path:listContents", async (_event, targetPath) => {
-  if (!targetPath) return [];
-  let listPath = targetPath;
+  if (!targetPath) return ipcError(new Error("Caminho ausente."));
   try {
+    let listPath = targetPath;
     const targetStat = await fs.lstat(targetPath);
     if (targetStat.isFile()) listPath = path.dirname(targetPath);
-  } catch {
-    return [];
+    const entries = await fs.readdir(listPath, { withFileTypes: true });
+    const items = await Promise.all(entries.slice(0, 300).map(async (entry) => {
+      const itemPath = path.join(listPath, entry.name);
+      try {
+        const stat = await fs.lstat(itemPath);
+        return {
+          name: entry.name,
+          path: itemPath,
+          type: entry.isDirectory() ? "Pasta" : "Arquivo",
+          size: stat.isFile() ? stat.size : 0,
+          modifiedAt: stat.mtime.toISOString()
+        };
+      } catch {
+        return {
+          name: entry.name,
+          path: itemPath,
+          type: entry.isDirectory() ? "Pasta" : "Arquivo",
+          size: 0,
+          modifiedAt: null
+        };
+      }
+    }));
+    return items;
+  } catch (error) {
+    const reason = error?.code || error?.message || "UNKNOWN";
+    return ipcError(new Error(`Não foi possível acessar esta pasta: ${reason}`));
   }
-  const entries = await fs.readdir(listPath, { withFileTypes: true });
-  const items = await Promise.all(entries.slice(0, 300).map(async (entry) => {
-    const itemPath = path.join(listPath, entry.name);
-    try {
-      const stat = await fs.lstat(itemPath);
-      return {
-        name: entry.name,
-        path: itemPath,
-        type: entry.isDirectory() ? "Pasta" : "Arquivo",
-        size: stat.isFile() ? stat.size : 0,
-        modifiedAt: stat.mtime.toISOString()
-      };
-    } catch {
-      return {
-        name: entry.name,
-        path: itemPath,
-        type: entry.isDirectory() ? "Pasta" : "Arquivo",
-        size: 0,
-        modifiedAt: null
-      };
-    }
-  }));
-  return items.sort((a, b) => {
-    if (a.type !== b.type) return a.type === "Pasta" ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+});
+
+ipcMain.handle("path:measureSize", async (_event, targetPath) => {
+  if (!targetPath) return ipcError(new Error("Caminho ausente."));
+  const result = await measurePath(targetPath);
+  if (!result.accessible) return ipcError(new Error(`Não foi possível calcular o tamanho: ${result.error || "UNKNOWN"}`));
+  return ipcOk(result);
 });
 
 ipcMain.handle("path:existsMany", async (_event, targetPaths = []) => {
