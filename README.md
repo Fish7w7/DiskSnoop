@@ -6,6 +6,14 @@
 ![GitHub release](https://img.shields.io/github/v/release/Fish7w7/DiskSnoop)
 ![GitHub releases](https://img.shields.io/github/downloads/Fish7w7/DiskSnoop/total)
 
+## Demonstração em 15 segundos
+
+[![Prévia animada do DiskSnoop 1.13 mostrando a tela de Pastas Grandes](docs/media/disksnoop-1.13-preview.webp)](docs/media/disksnoop-1.13.mp4)
+
+**[▶ Assistir ao vídeo completo em Full HD (MP4)](docs/media/disksnoop-1.13.mp4)**
+
+Uma apresentação rápida da tela de **Pastas Grandes** e da navegação pelo conteúdo das pastas. A prévia acima é animada; clique para abrir o vídeo original de 15 segundos.
+
 ## Download
 
 [**Baixar a versão mais recente**](https://github.com/Fish7w7/DiskSnoop/releases/latest)
@@ -29,10 +37,6 @@ Na página da release, escolha:
 * A rechecagem como administrador é somente leitura: não exclui nem move arquivos e encerra a espera após 60 segundos.
 
 ---
-
-<!-- Adicione um screenshot ou GIF do app aqui. Exemplo:
-![DiskSnoop em uso](docs/screenshot.png)
--->
 
 ## O que ele faz
 
