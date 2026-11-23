@@ -1,10 +1,10 @@
 # DiskSnoop
 
-> Aplicativo para Windows que mostra o que está ocupando espaço no SSD ou HD e permite revisar os itens antes de qualquer exclusão definitiva.
+[🇧🇷 Português (BR)](README.md) | [🇺🇸 English](README.en.md)
 
-![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows\&logoColor=white)
-![GitHub release](https://img.shields.io/github/v/release/Fish7w7/DiskSnoop)
-![GitHub releases](https://img.shields.io/github/downloads/Fish7w7/DiskSnoop/total)
+Aplicativo para Windows que mostra o que está ocupando espaço no SSD ou HD e permite revisar os itens antes de qualquer exclusão definitiva.
+
+[Download](#download) · [Como usar](#como-usar-o-disksnoop) · [Recursos](#recursos) · [Segurança](#segurança) · [Atalhos](#atalhos-de-teclado) · [Atualizações](#atualizações) · [Limites](#limites-conhecidos) · [Desenvolvimento](#desenvolvimento) · [Contribuir](#como-contribuir)
 
 ## Demonstração em 15 segundos
 
@@ -16,19 +16,35 @@ Uma apresentação rápida da tela de **Pastas Grandes** e da navegação pelo c
 
 ## Download
 
-[**Baixar a versão mais recente**](https://github.com/Fish7w7/DiskSnoop/releases/latest)
+Requer Windows 10 ou superior (x64).
 
-Na página da release, escolha:
+Abra a [release mais recente](https://github.com/Fish7w7/DiskSnoop/releases/latest) e procure os executáveis em **Assets**. As versões anteriores estão no [GitHub Releases](https://github.com/Fish7w7/DiskSnoop/releases).
 
-* **Setup** — instalador recomendado.
-* **Portable** — versão que funciona sem instalação.
+* **Setup** — opção recomendada. Baixe e execute o arquivo `DiskSnoop-Setup-…-x64.exe`. O instalador configura o aplicativo para o usuário atual e cria atalhos na Área de Trabalho e no menu Iniciar.
+* **Portable** — baixe o arquivo `DiskSnoop-Portable-…-x64.exe` e execute-o diretamente, sem instalação.
 
-> ⚠️ O aplicativo não possui assinatura de código. O Windows pode exibir um aviso de aplicativo desconhecido ao abrir o instalador ou a versão portable.
+> [!NOTE]
+> Os executáveis não têm assinatura de código. O Windows pode exibir um aviso de aplicativo ou fornecedor desconhecido ao abrir o Setup ou o Portable. Confirme que o arquivo veio do GitHub Releases oficial do DiskSnoop.
 
-> Requer Windows 10 ou superior em sistema 64 bits.
+## Como usar o DiskSnoop
+
+> [!IMPORTANT]
+> A análise não exclui arquivos automaticamente. Um item listado pode continuar sendo necessário para o Windows, um aplicativo ou um projeto. Confira a origem e o motivo da detecção antes de movê-lo.
+
+1. **Abra o aplicativo.** Baixe e execute o Setup ou o Portable conforme as instruções de [download](#download).
+2. **Escolha o idioma.** Na primeira execução, o DiskSnoop usa o idioma do sistema para escolher entre português e inglês. Na tela principal, abra **Configurações → Aparência → Idioma da interface** e selecione **Português (Brasil)**. Para mudar a partir do inglês, procure **Settings → Appearance → Interface language**. Se estiver na tela de boas-vindas, faça o primeiro scan para chegar à tela principal.
+3. **Escolha o que analisar.** Na tela de boas-vindas, clique em **Começar análise** (**Start analysis** em inglês). Na **Visão Geral**, use **Novo scan** ou `Ctrl+N` para voltar à seleção de discos. Para limitar a próxima análise a pastas específicas, antes de abrir a seleção de discos vá a **Configurações → Escopo do scan** e use **Adicionar pasta** em **Pastas incluídas**. Escolha o disco que contém essas pastas. Se nenhuma inclusão pertencer ao disco escolhido, o scan começa na raiz desse disco.
+4. **Inicie a análise.** Em **Escolha um disco**, clique em **Analisar C:** ou no botão equivalente do disco desejado. Acompanhe os contadores e a estimativa de tempo restante. Use **Pausar**, **Retomar** ou **Cancelar** conforme necessário.
+5. **Leia o resultado.** Na **Visão Geral**, veja a duração, a contagem de arquivos e o espaço estimado para revisão. Em **Itens sem acesso**, confira os caminhos que ficaram de fora e o motivo informado pelo Windows. Se precisar, use **Tentar novamente como administrador** para uma rechecagem somente leitura, sujeita à confirmação do UAC.
+6. **Investigue os maiores itens.** Em **Pastas Grandes**, expanda os ramos pelas setas e selecione uma linha para ver os detalhes. Use **Ver conteúdo** para navegar pelas subpastas. Em **Arquivos Grandes**, selecione um arquivo para conferir o tamanho e o caminho.
+7. **Revise candidatos e duplicados.** Em **Candidatos** e **Sobras de Apps**, leia o caminho e o motivo da detecção. Em **Duplicados**, compare as cópias e escolha qual caminho deve ser mantido. **Hash confirmado** indica conteúdo idêntico entre as cópias verificadas. **Possível duplicado** indica correspondência por nome e tamanho.
+8. **Mova apenas itens revisados para a quarentena.** Use **Mover para quarentena** quando a ação estiver disponível no painel de detalhes. Em **Candidatos**, você também pode marcar vários itens elegíveis e usar **Mover selecionados**. Use uma quarentena no mesmo disco para mover pastas.
+9. **Restaure se precisar.** Abra **Quarentena → Ativos**, selecione o item e clique em **Restaurar**. O DiskSnoop usa o caminho original registrado e bloqueia a restauração se já houver um item nesse local.
+10. **Confirme antes de excluir definitivamente.** Em **Quarentena → Ativos**, confira o caminho original do item, clique em **Excluir permanentemente**, digite a palavra solicitada na janela e clique em **Excluir**. Depois da exclusão, o DiskSnoop não consegue recuperar o item.
 
 ## Novidades da versão 1.13.0
 
+* **Pastas Grandes** reúne os resultados por caminho em uma árvore expansível. Em **Ver conteúdo**, você pode navegar pelas subpastas, usar a barra de caminho, atualizar a pasta atual e calcular tamanhos ainda desconhecidos. Veja as [notas da versão v1.13.0](https://github.com/Fish7w7/DiskSnoop/releases/tag/v1.13.0).
 * O progresso do scan agora calcula uma estimativa aproximada de tempo restante usando a velocidade dos últimos 10 segundos.
 * Os painéis de detalhes ganharam um botão discreto para copiar somente o caminho do item.
 * Novos atalhos permitem iniciar outro scan (`Ctrl+N`), buscar (`/`), fechar detalhes (`Esc`), navegar com as setas e copiar o caminho selecionado (`C`).
@@ -84,7 +100,7 @@ O DiskSnoop identifica possíveis candidatos de limpeza, como:
 * downloads antigos;
 * logs e arquivos temporários.
 
-Arquivos duplicados são comparados por nome, tamanho e conteúdo.
+Arquivos duplicados são agrupados por nome e tamanho. Quando a verificação por hash está ativa, o DiskSnoop usa SHA-256 para confirmar o conteúdo dos arquivos que consegue ler.
 
 A busca por sobras de aplicativos analisa pastas comuns do Windows com uma abordagem conservadora.
 
@@ -121,32 +137,26 @@ O botão de copiar caminho mantém essa ação separada: ele envia para a área 
 
 Executáveis e bibliotecas compatíveis também podem ter a assinatura digital verificada.
 
-### ⌨️ Atalhos de teclado
+### 🌐 Idiomas
 
-* `Ctrl+N` — iniciar um novo scan;
+A interface está disponível em português do Brasil e inglês. O idioma pode ser alterado nas configurações.
+
+## Atalhos de teclado
+
+* `Ctrl+N` — abrir a seleção de discos para um novo scan a partir da tela principal;
 * `/` — focar a busca da tela atual;
-* `Esc` — fechar o painel de detalhes;
+* `Esc` — fechar o painel de detalhes ou tirar o foco do campo de texto;
 * `↑` e `↓` — navegar pelos itens visíveis;
 * `C` — copiar o caminho do item selecionado.
 
-Atalhos de uma tecla ficam desativados enquanto a pessoa digita em campos de texto. `Ctrl+N` continua disponível nesse contexto.
+Quando um campo de texto está em foco, `Ctrl+N` continua disponível e `Esc` tira o foco do campo. Os demais atalhos da lista ficam desativados nesse contexto.
 
-### 🔄 Atualizações
+## Atualizações
 
-O DiskSnoop verifica novas versões pelo GitHub Releases e exibe o changelog antes da atualização.
+Em **Atualização**, clique em **Verificar agora** para buscar novas versões no GitHub Releases e consultar as notas disponíveis. Você também pode habilitar a verificação ao iniciar.
 
-No instalador, o download automático pode ser feito pelo próprio aplicativo, mas o reinício sempre exige confirmação.
-
-A versão portable utiliza um processo de atualização assistida.
-
-### 🌐 Idiomas
-
-A interface está disponível em:
-
-* Português do Brasil;
-* Inglês.
-
-O idioma pode ser alterado nas configurações.
+* **Setup** — o aplicativo pode baixar a atualização automaticamente se essa opção estiver habilitada. Para aplicar a atualização, confirme o reinício no aplicativo.
+* **Portable** — o aplicativo pode baixar o novo executável. Feche a versão antiga e execute o novo arquivo manualmente. Você também pode baixá-lo no [GitHub Releases](https://github.com/Fish7w7/DiskSnoop/releases).
 
 ## Segurança
 
@@ -154,11 +164,12 @@ O idioma pode ser alterado nas configurações.
 * Nenhum item detectado pela análise é excluído automaticamente.
 * A exclusão permanente sempre exige uma ação explícita do usuário.
 * Itens movidos para a quarentena mantêm as informações necessárias para restauração.
-* Ações em lote podem oferecer a criação de um ponto de restauração do Windows quando o recurso estiver disponível.
+* Ações como mover itens em lote ou excluir permanentemente podem oferecer a criação de um ponto de restauração do Windows quando o recurso estiver disponível.
 * Atualizações não são aplicadas durante uma análise ou enquanto ações de quarentena estão em andamento.
 * Configurações, histórico e quarentena não são removidos durante atualizações normais do aplicativo.
 
-> Quando a origem e a quarentena estão em discos diferentes, pastas muito grandes podem ser bloqueadas para evitar uma cópia incompleta. Arquivos menores podem ser movidos entre discos com verificação antes da remoção da origem.
+> [!NOTE]
+> O DiskSnoop bloqueia a movimentação de pastas para uma quarentena em outro disco. Arquivos comuns podem ser copiados entre discos, com verificação antes da remoção da origem.
 
 ## Limites conhecidos
 
@@ -174,6 +185,8 @@ O idioma pode ser alterado nas configurações.
 ## Desenvolvimento
 
 ### Rodar localmente
+
+Use o Node.js 22.12 ou superior com npm no Windows. Execute os comandos na raiz do repositório.
 
 ```powershell
 npm install
@@ -243,3 +256,9 @@ O instalador é colocado em `%LOCALAPPDATA%\Programs\DiskSnoop` para o usuário 
    * `DiskSnoop-Portable-X.Y.Z-x64.exe`
 
 > O `electron-updater` pode atualizar diretamente de uma versão antiga para a mais recente, desde que a release inclua o instalador, o `latest.yml` e o `.blockmap` correspondentes.
+
+## Como contribuir
+
+Para relatar um erro ou sugerir uma melhoria, procure relatos semelhantes e abra uma [Issue](https://github.com/Fish7w7/DiskSnoop/issues). Ao relatar um erro, inclua a versão do DiskSnoop, a versão do Windows e os passos para reproduzi-lo.
+
+Para enviar uma alteração, faça um fork, crie uma branch, rode as verificações pertinentes e abra um [Pull Request](https://github.com/Fish7w7/DiskSnoop/pulls) descrevendo a mudança e como você a validou.
