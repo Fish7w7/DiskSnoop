@@ -18,7 +18,7 @@ const {
 } = require("./elevated-recheck");
 const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
 const { createTaskbarBadgeController } = require("./taskbar-badge");
-const { resolveInitialLanguage } = require("./system-language");
+const { isSupportedLanguage, resolveInitialLanguage } = require("./system-language");
 const {
   MIN_WINDOW_WIDTH,
   MIN_WINDOW_HEIGHT,
@@ -92,7 +92,7 @@ ipcMain.on("locale:load", (event, locale) => {
 const defaultSettings = {
   settingsVersion: 2,
   theme: "light",
-  language: "pt-BR",
+  language: "en-US",
   appearance: {
     customAccent: null
   },
@@ -142,6 +142,18 @@ async function writeJson(fileName, value) {
   return value;
 }
 
+async function writeSettings(settings) {
+  const temporaryFile = `settings-${crypto.randomUUID()}.tmp`;
+  try {
+    await writeJson(temporaryFile, settings);
+    await fs.rename(dataFile(temporaryFile), dataFile("settings.json"));
+    return settings;
+  } catch (error) {
+    await fs.rm(dataFile(temporaryFile), { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 async function appendAuditEntry(action, details = {}) {
   try {
     await fs.mkdir(app.getPath("userData"), { recursive: true });
@@ -161,7 +173,7 @@ async function getSettings() {
   const saved = await readJson("settings.json", {});
   const languageResolution = resolveInitialLanguage(
     saved.language,
-    () => app.getLocale(),
+    () => app.getPreferredSystemLanguages()[0],
     defaultSettings.language
   );
   const savedUpdate = saved.update || {};
@@ -186,7 +198,7 @@ async function getSettings() {
     }
   };
   if (languageResolution.shouldPersist || (saved.theme && saved.theme !== settings.theme)) {
-    await writeJson("settings.json", settings);
+    await writeSettings(settings);
   }
   return settings;
 }
@@ -1163,7 +1175,7 @@ async function createWindow() {
     }
   });
 
-  await mainWindow.loadFile(paths.renderer, { query: { bootTheme } });
+  await mainWindow.loadFile(paths.renderer, { query: { bootTheme, bootLanguage: savedSettings.language } });
 }
 
 const elevatedRecheckMode = parseElevatedRecheckArgs(process.argv);
@@ -1220,11 +1232,20 @@ ipcMain.handle("taskbar:testBadge", async () => {
   return shown;
 });
 ipcMain.handle("settings:get", async () => getSettings());
-ipcMain.handle("settings:save", async (_event, nextSettings) => {
+let settingsSaveQueue = Promise.resolve();
+
+function queueSettingsSave(save) {
+  const result = settingsSaveQueue.then(save);
+  settingsSaveQueue = result.catch(() => {});
+  return result;
+}
+
+ipcMain.handle("settings:save", (_event, nextSettings) => queueSettingsSave(async () => {
   const current = await getSettings();
   const settings = {
     ...current,
     ...nextSettings,
+    language: isSupportedLanguage(nextSettings?.language) ? nextSettings.language : current.language,
     theme: resolveBootThemePreference(nextSettings?.theme ?? current.theme),
     appearance: normalizeAppearance(nextSettings?.appearance ?? current.appearance),
     update: {
@@ -1232,19 +1253,20 @@ ipcMain.handle("settings:save", async (_event, nextSettings) => {
       ...(nextSettings?.update || {})
     }
   };
-  const saved = await writeJson("settings.json", settings);
+  const saved = await writeSettings(settings);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setBackgroundColor(resolveBootBackground(saved.theme, nativeTheme.shouldUseDarkColors));
   }
   return saved;
-});
-ipcMain.handle("settings:reset", async () => {
-  const saved = await writeJson("settings.json", defaultSettings);
+}));
+ipcMain.handle("settings:reset", () => queueSettingsSave(async () => {
+  const { language } = await getSettings();
+  const saved = await writeSettings({ ...defaultSettings, language });
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setBackgroundColor(resolveBootBackground(saved.theme, nativeTheme.shouldUseDarkColors));
   }
   return saved;
-});
+}));
 ipcMain.handle("history:list", async () => {
   const [history, snapshots] = await Promise.all([
     readJson("history.json", []),
@@ -1308,20 +1330,20 @@ ipcMain.handle("update:showDownloaded", async () => {
   shell.showItemInFolder(updateState.downloaded.path);
   return { ok: true };
 });
-ipcMain.handle("update:ignoreVersion", async () => {
+ipcMain.handle("update:ignoreVersion", () => queueSettingsSave(async () => {
   const updateState = await getUpdateState();
   if (!updateState.latestVersion) throw new Error("Nenhuma versao disponivel para ignorar.");
   const settings = await getSettings();
   settings.update.ignoredVersion = updateState.latestVersion;
-  await writeJson("settings.json", settings);
+  await writeSettings(settings);
   return saveUpdateState({ status: "ignored", ignoredVersion: updateState.latestVersion, hiddenUntilReminder: false });
-});
-ipcMain.handle("update:rememberLater", async () => {
+}));
+ipcMain.handle("update:rememberLater", () => queueSettingsSave(async () => {
   const settings = await getSettings();
   settings.update.remindAfter = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  await writeJson("settings.json", settings);
+  await writeSettings(settings);
   return saveUpdateState({ remindAfter: settings.update.remindAfter, hiddenUntilReminder: true });
-});
+}));
 ipcMain.handle("quarantine:list", async () => syncedQuarantine());
 
 ipcMain.handle("path:listContents", async (_event, targetPath) => {
@@ -1453,14 +1475,14 @@ ipcMain.handle("dialog:chooseQuarantineFolder", async () => {
   return quarantineRoot;
 });
 
-ipcMain.handle("ignore:add", async (_event, itemPath) => {
+ipcMain.handle("ignore:add", (_event, itemPath) => queueSettingsSave(async () => {
   const settings = await getSettings();
   if (itemPath && !settings.ignoredPaths.includes(itemPath)) {
     settings.ignoredPaths.push(itemPath);
-    await writeJson("settings.json", settings);
+    await writeSettings(settings);
   }
   return settings;
-});
+}));
 
 ipcMain.handle("quarantine:move", async (_event, item) => {
   protectedActionCount += 1;

@@ -51,7 +51,7 @@
       active = null;
       menu.remove();
       trigger.setAttribute("aria-expanded", "false");
-      trigger.removeAttribute("aria-activedescendant");
+      trigger.removeAttribute("aria-controls");
       shell.classList.remove("is-open", "opens-up");
       if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
       return true;
@@ -89,7 +89,7 @@
       });
       const current = buttons[active.activeIndex];
       if (current) {
-        active.trigger.setAttribute("aria-activedescendant", current.id);
+        active.menu.setAttribute("aria-activedescendant", current.id);
         if (scroll) current.scrollIntoView({ block: "nearest" });
       }
     }
@@ -101,7 +101,9 @@
       if (!option || option.disabled) return;
       select.selectedIndex = index;
       trigger.querySelector(".custom-select-value").textContent = option.textContent;
-      close();
+      const label = select.getAttribute("aria-label");
+      if (label) trigger.setAttribute("aria-label", `${label}: ${option.textContent}`);
+      close({ restoreFocus: true });
       select.dispatchEvent(new globalScope.Event("change", { bubbles: true }));
     }
 
@@ -142,7 +144,7 @@
         close({ restoreFocus: true });
         return;
       }
-      if (event.key === "Tab") close();
+      if (event.key === "Tab") close({ restoreFocus: true });
     }
 
     function open(select, trigger) {
@@ -157,12 +159,13 @@
       const menuId = `custom-select-menu-${++idCounter}`;
       menu.id = menuId;
       menu.className = "custom-select-menu";
+      if (select.dataset.field) menu.dataset.field = select.dataset.field;
       menu.setAttribute("role", "listbox");
       menu.setAttribute("tabindex", "-1");
       menu.setAttribute("aria-label", select.getAttribute("aria-label") || trigger.textContent.trim());
       menu.style.visibility = "hidden";
       menu.innerHTML = options.map((option, index) => `
-        <button id="${menuId}-option-${index}" class="custom-select-option" type="button" role="option" data-option-index="${index}" ${option.disabled ? "disabled" : ""}>
+        <button id="${menuId}-option-${index}" class="custom-select-option" type="button" role="option" tabindex="-1" data-option-index="${index}" ${option.disabled ? "disabled" : ""}>
           <span>${escapeMarkup(option.textContent)}</span>
           <svg class="custom-select-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>
         </button>
@@ -214,7 +217,12 @@
           <span class="custom-select-value"></span>
           <svg class="icon custom-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"/></svg>
         `;
-        trigger.querySelector(".custom-select-value").textContent = select.selectedOptions[0]?.textContent || "";
+        const value = select.selectedOptions[0]?.textContent || "";
+        const label = select.getAttribute("aria-label");
+        trigger.querySelector(".custom-select-value").textContent = value;
+        if (label) trigger.setAttribute("aria-label", `${label}: ${value}`);
+        const leadingIcon = shell.querySelector(".select-leading-icon");
+        if (leadingIcon) trigger.prepend(leadingIcon);
         trigger.addEventListener("click", () => open(select, trigger));
         trigger.addEventListener("keydown", (event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {

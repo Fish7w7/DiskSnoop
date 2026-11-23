@@ -32,7 +32,7 @@ Abra a [release mais recente](https://github.com/Fish7w7/DiskSnoop/releases/late
 > A análise não exclui arquivos automaticamente. Um item listado pode continuar sendo necessário para o Windows, um aplicativo ou um projeto. Confira a origem e o motivo da detecção antes de movê-lo.
 
 1. **Abra o aplicativo.** Baixe e execute o Setup ou o Portable conforme as instruções de [download](#download).
-2. **Escolha o idioma.** Na primeira execução, o DiskSnoop usa o idioma do sistema para escolher entre português e inglês. Na tela principal, abra **Configurações → Aparência → Idioma da interface** e selecione **Português (Brasil)**. Para mudar a partir do inglês, procure **Settings → Appearance → Interface language**. Se estiver na tela de boas-vindas, faça o primeiro scan para chegar à tela principal.
+2. **Escolha o idioma.** Use o seletor com ícone de globo no canto superior direito da tela de boas-vindas para escolher **Português (BR)** ou **English** antes do primeiro scan.
 3. **Escolha o que analisar.** Na tela de boas-vindas, clique em **Começar análise** (**Start analysis** em inglês). Na **Visão Geral**, use **Novo scan** ou `Ctrl+N` para voltar à seleção de discos. Para limitar a próxima análise a pastas específicas, antes de abrir a seleção de discos vá a **Configurações → Escopo do scan** e use **Adicionar pasta** em **Pastas incluídas**. Escolha o disco que contém essas pastas. Se nenhuma inclusão pertencer ao disco escolhido, o scan começa na raiz desse disco.
 4. **Inicie a análise.** Em **Escolha um disco**, clique em **Analisar C:** ou no botão equivalente do disco desejado. Acompanhe os contadores e a estimativa de tempo restante. Use **Pausar**, **Retomar** ou **Cancelar** conforme necessário.
 5. **Leia o resultado.** Na **Visão Geral**, veja a duração, a contagem de arquivos e o espaço estimado para revisão. Em **Itens sem acesso**, confira os caminhos que ficaram de fora e o motivo informado pelo Windows. Se precisar, use **Tentar novamente como administrador** para uma rechecagem somente leitura, sujeita à confirmação do UAC.
@@ -139,7 +139,7 @@ Executáveis e bibliotecas compatíveis também podem ter a assinatura digital v
 
 ### 🌐 Idiomas
 
-A interface está disponível em português do Brasil e inglês. O idioma pode ser alterado nas configurações.
+A interface está disponível em português do Brasil e inglês. Sem uma preferência salva, o DiskSnoop usa o idioma principal do sistema quando compatível e recorre ao inglês nos demais casos. A troca pode ser feita pelo seletor na tela de boas-vindas ou em **Configurações → Aparência → Idioma da interface**. A nova escolha é aplicada na hora e salva para as próximas sessões.
 
 ## Atalhos de teclado
 

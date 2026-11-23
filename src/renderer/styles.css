@@ -1526,6 +1526,14 @@ h3 {
   transition: transform 140ms ease, color 140ms ease;
 }
 
+.custom-select-trigger .select-leading-icon {
+  position: static;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  transform: none;
+}
+
 .select-shell.is-open .custom-select-chevron {
   transform: rotate(180deg);
   color: var(--accent);
@@ -1579,6 +1587,15 @@ h3 {
 
 .custom-select-option.is-active.is-selected {
   background: color-mix(in srgb, var(--accentSoft) 76%, var(--surfaceHover));
+}
+
+.custom-select-menu[data-field="language"] .custom-select-option.is-selected {
+  color: var(--textPrimary);
+}
+
+.language-select .custom-select-trigger:focus-visible {
+  outline: 2px solid var(--textPrimary);
+  outline-offset: 2px;
 }
 
 .custom-select-option:disabled {
@@ -3490,6 +3507,26 @@ details.settings-card[open] summary::after {
   overflow: hidden;
 }
 
+.welcome-language-select {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline-end: var(--space-4);
+  z-index: 2;
+  inline-size: 176px;
+  max-inline-size: calc(100% - 2 * var(--space-4));
+}
+
+.welcome-language-select .custom-select-trigger {
+  min-height: 34px;
+  gap: var(--space-2);
+  padding: 5px 10px;
+  font-size: var(--text-sm);
+}
+
+.welcome-language-select .custom-select-value {
+  flex: 1;
+}
+
 .welcome-bg-blobs {
   position: absolute;
   inset: 0;
@@ -3694,8 +3731,16 @@ details.settings-card[open] summary::after {
 }
 
 @media (max-width: 900px) {
+  .welcome-window {
+    overflow-y: auto;
+  }
+
+  .welcome-clean {
+    padding-block-start: 48px;
+  }
+
   .welcome-inner-split {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .welcome-hero-left {

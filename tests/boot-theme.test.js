@@ -58,9 +58,9 @@ test("usa o tema do sistema quando explícito e dark como fallback seguro", () =
   assert.match(html, /dataset\.theme = savedTheme[\s\S]*?\? normalizedSavedTheme[\s\S]*?: bootTheme/);
 
   const main = fs.readFileSync(path.join(__dirname, "..", "src", "main", "main.js"), "utf8");
-  assert.match(main, /loadFile\(paths\.renderer,\s*\{\s*query:\s*\{\s*bootTheme\s*\}\s*\}\)/);
+  assert.match(main, /loadFile\(paths\.renderer,\s*\{\s*query:\s*\{\s*bootTheme,\s*bootLanguage: savedSettings\.language\s*\}\s*\}\)/);
   assert.match(main, /theme: resolveBootThemePreference\(saved\.theme \?\? defaultSettings\.theme\)/);
-  assert.match(main, /if \(languageResolution\.shouldPersist \|\| \(saved\.theme && saved\.theme !== settings\.theme\)\)\s*\{[\s\S]*?await writeJson\("settings\.json", settings\);/);
+  assert.match(main, /if \(languageResolution\.shouldPersist \|\| \(saved\.theme && saved\.theme !== settings\.theme\)\)\s*\{[\s\S]*?await writeSettings\(settings\);/);
   assert.match(main, /theme: resolveBootThemePreference\(nextSettings\?\.theme \?\? current\.theme\)/);
 });
 

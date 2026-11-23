@@ -174,7 +174,7 @@ test("boas-vindas usa duas colunas, jornada conectada e blobs sem alterar o masc
   assert.match(css, /\.welcome-inner-split\s*\{[\s\S]*?grid-template-columns:\s*minmax\(320px,\s*1fr\)\s+minmax\(300px,\s*380px\);[\s\S]*?gap:\s*48px;/);
   assert.match(css, /\.welcome-journey-line\s*\{[\s\S]*?left:\s*23px;[\s\S]*?width:\s*2px;[\s\S]*?background:\s*var\(--border\);/);
   assert.match(css, /\.welcome-bg-blobs::before,[\s\S]*?filter:\s*blur\(60px\);[\s\S]*?var\(--accent\)\s*18%/);
-  assert.match(css, /@media \(max-width:\s*900px\)\s*\{[\s\S]*?\.welcome-inner-split\s*\{[\s\S]*?grid-template-columns:\s*1fr;/);
+  assert.match(css, /@media \(max-width:\s*900px\)\s*\{[\s\S]*?\.welcome-inner-split\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/);
   assert.doesNotMatch(css, /welcome-bg-grid|welcome-features|welcome-feature-card(?:\:hover)?/);
 
   assert.equal(ptBR.messages["welcome.stepOne"], "Passo 1");

@@ -4,12 +4,12 @@ function isSupportedLanguage(language) {
   return supportedLanguages.includes(language);
 }
 
-function languageFromSystemLocale(locale, fallback = "pt-BR") {
+function languageFromSystemLocale(locale, fallback = "en-US") {
   if (typeof locale !== "string" || !locale.trim()) return fallback;
-  return locale.trim().toLowerCase().startsWith("pt") ? "pt-BR" : "en-US";
+  return /^pt(?:[-_]|$)/i.test(locale.trim()) ? "pt-BR" : fallback;
 }
 
-function resolveInitialLanguage(savedLanguage, getSystemLocale, fallback = "pt-BR") {
+function resolveInitialLanguage(savedLanguage, getSystemLocale, fallback = "en-US") {
   if (isSupportedLanguage(savedLanguage)) {
     return {
       language: savedLanguage,
@@ -31,6 +31,7 @@ function resolveInitialLanguage(savedLanguage, getSystemLocale, fallback = "pt-B
 }
 
 module.exports = {
+  isSupportedLanguage,
   languageFromSystemLocale,
   resolveInitialLanguage
 };

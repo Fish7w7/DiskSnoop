@@ -1,10 +1,12 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DiskSnoop</title>
     <script>
+      const bootLanguage = new URLSearchParams(location.search).get("bootLanguage");
+      document.documentElement.lang = bootLanguage === "pt-BR" ? "pt-BR" : "en-US";
       try {
         const bootTheme = new URLSearchParams(location.search).get("bootTheme");
         const savedTheme = localStorage.getItem("disksnoop-theme");
@@ -24,11 +26,10 @@
         if (savedTheme && savedTheme !== normalizedSavedTheme) {
           localStorage.setItem("disksnoop-theme", normalizedSavedTheme);
         }
-        const language = localStorage.getItem("disksnoop-language");
-        if (language) document.documentElement.lang = language;
       } catch {}
     </script>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="./i18n.js"></script>
   </head>
   <body>
     <div id="app">
@@ -42,7 +43,7 @@
             </div>
           </div>
           <h1>DiskSnoop</h1>
-          <p class="boot-status" data-boot-status aria-live="polite">Carregando configurações...</p>
+          <p class="boot-status" data-boot-status aria-live="polite"></p>
           <div class="boot-loader">
             <span data-boot-progress></span>
           </div>
@@ -54,45 +55,25 @@
       </main>
       <script>
         (() => {
-          const steps = [
-            { key: "loading", text: { "pt-BR": "Preparando DiskSnoop...", "en-US": "Preparing DiskSnoop..." } },
-            { key: "ready", text: { "pt-BR": "Abrindo app...", "en-US": "Opening app..." } }
-          ];
+          const steps = { loading: "boot.loadingApp", ready: "boot.openingApp" };
           const status = document.querySelector("[data-boot-status]");
-          let language = "pt-BR";
-          let current = 0;
-          try {
-            const saved = localStorage.getItem("disksnoop-language");
-            if (saved === "en-US") language = saved;
-          } catch {}
+          let current = "loading";
 
-          const applyStep = (index) => {
-            current = Math.max(0, Math.min(steps.length - 1, index));
-            const step = steps[current];
-            if (status) status.textContent = step.text[language] || step.text["pt-BR"];
+          const applyStep = () => {
+            status.textContent = window.diskSnoopI18n.translate(document.documentElement.lang, steps[current]);
           };
 
           window.diskSnoopBoot = {
-            setLanguage(nextLanguage) {
-              if (nextLanguage === "en-US" || nextLanguage === "pt-BR") {
-                language = nextLanguage;
-                document.documentElement.lang = language;
-                applyStep(current);
-              }
-            },
-            setStep(stepKey) {
-              const index = typeof stepKey === "number"
-                ? stepKey
-                : steps.findIndex((step) => step.key === stepKey);
-              if (index >= 0) applyStep(index);
+            setStep(step) {
+              current = step;
+              applyStep();
             }
           };
 
-          applyStep(0);
+          applyStep();
         })();
       </script>
     </div>
-    <script src="./i18n.js"></script>
     <script src="./local-changelog.js"></script>
     <script src="./color-utils.js"></script>
     <script src="./overview-comparison.js"></script>

@@ -7,9 +7,7 @@ const candidateBatchActions = window.diskSnoopCandidateBatchActions;
 if (!api) {
   const bootStatus = document.querySelector("[data-boot-status]");
   if (bootStatus) {
-    bootStatus.textContent = document.documentElement.lang === "en-US"
-      ? "Could not connect to the main process. Restart the app and check the terminal."
-      : "Não foi possível conectar ao processo principal. Reinicie o app e verifique o terminal.";
+    bootStatus.textContent = window.diskSnoopI18n.translate(document.documentElement.lang, "boot.connectionError");
   }
   throw new Error("DiskSnoop preload failed: window.diskScope is unavailable.");
 }
@@ -146,7 +144,7 @@ function themeDisplayLabel(theme) {
 }
 
 const languageOptions = [
-  ["Português (Brasil)", "pt-BR"],
+  ["Português (BR)", "pt-BR"],
   ["English", "en-US"]
 ];
 const languageLabels = Object.fromEntries(languageOptions.map(([label, value]) => [value, label]));
@@ -161,7 +159,7 @@ function normalizeTheme(settings) {
     ? normalized.appearance.customAccent.toLowerCase()
     : null;
   normalized.appearance = { ...(normalized.appearance || {}), customAccent };
-  if (!languageLabels[normalized.language]) normalized.language = "pt-BR";
+  if (!Object.hasOwn(languageLabels, normalized.language)) normalized.language = "en-US";
   normalized.ignoredPaths = Array.isArray(normalized.ignoredPaths) ? normalized.ignoredPaths : [];
   normalized.includedPaths = Array.isArray(normalized.includedPaths) ? normalized.includedPaths : [];
   if (normalized.verifyDuplicateHashes === undefined) normalized.verifyDuplicateHashes = true;
@@ -191,6 +189,7 @@ const iconPaths = {
   cube: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12 4 7.5M12 12l8-4.5M12 12v9"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
   chevron: '<path d="m7 10 5 5 5-5"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
   download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
   database: '<path d="M5 6c0-2 14-2 14 0s-14 2-14 0v12c0 2 14 2 14 0V6"/><path d="M5 12c0 2 14 2 14 0"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',
@@ -280,26 +279,11 @@ function escapeHtml(value) {
 }
 
 function currentLanguage() {
-  return languageLabels[state.settings?.language] ? state.settings.language : "pt-BR";
-}
-
-function storedLanguage() {
-  try {
-    const language = localStorage.getItem("disksnoop-language");
-    return languageLabels[language] ? language : "pt-BR";
-  } catch {
-    return "pt-BR";
-  }
-}
-
-function rememberLanguage(language = currentLanguage()) {
-  try { localStorage.setItem("disksnoop-language", languageLabels[language] ? language : "pt-BR"); } catch {}
+  return state.settings?.language || document.documentElement.lang;
 }
 
 function setBootStep(step) {
-  const language = state.settings ? currentLanguage() : storedLanguage();
-  if (state.settings) rememberLanguage(language);
-  window.diskSnoopBoot?.setLanguage?.(language);
+  document.documentElement.lang = currentLanguage();
   window.diskSnoopBoot?.setStep?.(step);
 }
 
@@ -603,7 +587,6 @@ function applyTheme() {
   document.documentElement.dataset.theme = theme;
   applyCustomAccent(state.settings?.appearance?.customAccent || null);
   try { localStorage.setItem("disksnoop-theme", theme); } catch {}
-  rememberLanguage();
 }
 
 function applyCustomAccent(hex) {
@@ -929,11 +912,12 @@ function sidebar() {
 
 function welcomeScreen() {
   return `
-    <div class="window">
+    <div class="window welcome-window">
       ${appHeader()}
       <main class="welcome-clean">
         <div class="welcome-bg-blobs"></div>
         <div class="welcome-glow"></div>
+        ${languageSelect({ compact: true })}
         <div class="welcome-inner welcome-inner-split">
           <div class="welcome-hero welcome-hero-left">
             <div class="welcome-logo-wrap">
@@ -982,6 +966,7 @@ function welcomeScreen() {
           </div>
         </div>
       </main>
+      ${toastOverlay()}
     </div>
   `;
 }
@@ -2570,12 +2555,20 @@ function candidatesTab() {
   `;
 }
 
-function selectControl(field, options, current) {
-  return `<div class="select-shell wide-select"><select data-field="${field}">${options.map((item) => {
+function selectControl(field, options, current, { className = "", label = "", leadingIcon = "" } = {}) {
+  return `<div class="select-shell wide-select ${className}"><select data-field="${field}"${label ? ` aria-label="${escapeHtml(label)}"` : ""}>${options.map((item) => {
     const label = Array.isArray(item) ? item[0] : item;
     const value = Array.isArray(item) ? item[1] : item;
     return `<option value="${escapeHtml(value)}" ${String(current) === String(value) ? "selected" : ""}>${escapeHtml(label)}</option>`;
-  }).join("")}</select>${icon("chevron")}</div>`;
+  }).join("")}</select>${leadingIcon ? icon(leadingIcon, "select-leading-icon") : ""}${icon("chevron")}</div>`;
+}
+
+function languageSelect({ compact = false } = {}) {
+  return selectControl("language", languageOptions, currentLanguage(), {
+    className: compact ? "language-select welcome-language-select" : "language-select",
+    label: t("settings.languageLabel"),
+    leadingIcon: compact ? "globe" : ""
+  });
 }
 
 function candidateDetails(item) {
@@ -3784,7 +3777,7 @@ function settingsTab() {
       </section>
       <section class="settings-card">
         <div><p>${escapeHtml(t("settings.languageLabel"))}</p><span>${escapeHtml(t("settings.languageHelp"))}</span></div>
-        ${selectControl("language", languageOptions, state.settings.language || "pt-BR")}
+        ${languageSelect()}
       </section>
     `,
     analysis: `
@@ -3983,7 +3976,7 @@ async function loadBasics() {
     loadHiddenPaths();
     const loadedSettings = normalizeTheme(await api.getSettings());
     state.settings = loadedSettings;
-    api.saveSettings(loadedSettings).catch(() => {});
+    saveSettings(loadedSettings).catch(() => {});
 
     const [drives, quarantine, history, appPaths] = await Promise.all([
       api.listDrives(),
@@ -4302,10 +4295,10 @@ async function refreshUpdateState() {
 async function runUpdateCheck(manual = true) {
   if (!api.checkForUpdates) return;
   state.update = { ...state.update, status: "checking", progress: 0, error: "" };
-  render();
+  if (state.screen !== "welcome") render();
   try {
     state.update = await api.checkForUpdates({ manual });
-    render();
+    if (state.screen !== "welcome") render();
     if (manual) {
       const meta = updateStatusMeta(state.update.status);
       setToast(meta.label);
@@ -4609,9 +4602,16 @@ function elevatedDeletionRisk(record) {
     || originalPath.includes("\\program files (x86)\\");
 }
 
+async function saveSettings({ language, ...preferences }) {
+  const saved = await api.saveSettings(preferences);
+  return { ...saved, language: currentLanguage() };
+}
+
 function persistSettingsSoon() {
-  api.saveSettings(state.settings)
+  const pendingSettings = state.settings;
+  saveSettings(pendingSettings)
     .then((saved) => {
+      if (state.settings !== pendingSettings) return;
       state.settings = normalizeTheme(saved);
       if (state.screen === "app" && state.tab === "settings") render();
     })
@@ -4673,12 +4673,6 @@ function updateSelectField(target) {
   if (field === "leftoversLocation") {
     state.leftoversLocation = target.value;
     state.leftoversLimit = 80;
-  }
-  if (field === "language") {
-    state.settings.language = languageLabels[target.value] ? target.value : "pt-BR";
-    state.settings = normalizeTheme(state.settings);
-    rememberLanguage(state.settings.language);
-    persistSettingsSoon();
   }
   return true;
 }
@@ -5256,7 +5250,7 @@ document.addEventListener("click", async (event) => {
     const folder = await api.chooseQuarantineFolder();
     if (folder) {
       state.settings.quarantinePath = folder;
-      state.settings = await api.saveSettings(state.settings);
+      state.settings = await saveSettings(state.settings);
       render();
       setToast(`Quarentena criada em ${folder}.`);
     }
@@ -5265,7 +5259,7 @@ document.addEventListener("click", async (event) => {
     const folder = await api.chooseFolder();
     if (folder && !state.settings.includedPaths.includes(folder)) {
       state.settings.includedPaths.push(folder);
-      state.settings = await api.saveSettings(state.settings);
+      state.settings = await saveSettings(state.settings);
       render();
     }
   }
@@ -5273,7 +5267,7 @@ document.addEventListener("click", async (event) => {
     const folder = await api.chooseFolder();
     if (folder && !state.settings.ignoredPaths.includes(folder)) {
       state.settings.ignoredPaths.push(folder);
-      state.settings = await api.saveSettings(state.settings);
+      state.settings = await saveSettings(state.settings);
       render();
     }
   }
@@ -5285,18 +5279,18 @@ document.addEventListener("click", async (event) => {
       return;
     }
     state.settings.ignoredPaths = [...(state.settings.ignoredPaths || []), ...paths];
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
     setToast(`${paths.length} pasta(s) adicionada(s) aos ignorados.`);
   }
   if (action === "remove-included-path") {
     state.settings.includedPaths.splice(Number(target.dataset.index), 1);
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
   }
   if (action === "remove-ignored-path") {
     state.settings.ignoredPaths.splice(Number(target.dataset.index), 1);
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
   }
   if (action === "open-config-path") {
@@ -5308,19 +5302,19 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "reset-quarantine-path") {
     state.settings.quarantinePath = "";
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
     setToast("Quarentena voltou para o local padrão.");
   }
   if (action === "clear-included") {
     state.settings.includedPaths = [];
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
     setToast("Pastas incluídas limpas.");
   }
   if (action === "reset-ignored") {
     state.settings.ignoredPaths = [];
-    state.settings = await api.saveSettings(state.settings);
+    state.settings = await saveSettings(state.settings);
     render();
     setToast("Ignorados resetados.");
   }
@@ -5588,6 +5582,21 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("change", async (event) => {
+  if (event.target.dataset.field === "language") {
+    const language = event.target.value;
+    if (!Object.hasOwn(languageLabels, language)) return;
+    const pendingSettings = { ...state.settings, language };
+    state.settings = pendingSettings;
+    render();
+    $(".language-select .custom-select-trigger")?.focus({ preventScroll: true });
+    try {
+      await api.saveSettings({ language });
+    } catch {
+      if (state.settings === pendingSettings) setToast(t("settings.languageSaveError"));
+    }
+    return;
+  }
+
   if (event.target.dataset.action === "select-accent-custom") {
     const accentBeforeChange = customAccentStartValue === undefined
       ? state.settings.appearance?.customAccent || null
@@ -5609,7 +5618,7 @@ document.addEventListener("change", async (event) => {
       ...(state.settings.update || {}),
       [pref]: event.target.checked
     };
-    state.settings = normalizeTheme(await api.saveSettings(state.settings));
+    state.settings = normalizeTheme(await saveSettings(state.settings));
     await refreshUpdateState();
     render();
     return;
