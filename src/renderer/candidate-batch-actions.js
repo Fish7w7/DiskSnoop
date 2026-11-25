@@ -47,6 +47,9 @@
       || normalized.includes("permission denied")
       || normalized.includes("acesso negado")
       || normalized.includes("permissao")) return "access-denied";
+    if (normalized.includes("mudou desde a analise")
+      || normalized.includes("faca um novo scan")
+      || normalized.includes("enoent")) return "stale";
     if (normalized.includes("protegido")
       || normalized.includes("sensivel")
       || normalized.includes("dados internos")

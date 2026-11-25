@@ -107,6 +107,7 @@ function createInstalledAppsInventory({ runPowerShell, platform = process.platfo
 
   return {
     load,
+    cachedApps: () => cachedInventory?.apps || [],
     clear() {
       cachedInventory = null;
       pendingInventory = null;

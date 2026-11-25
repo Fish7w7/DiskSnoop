@@ -19,35 +19,35 @@ const {
 } = require("../src/renderer/content-browser");
 
 test("navegação começa na pasta selecionada, entra em subpasta e volta", () => {
-  const navigation = createContentNavigation("C:\\Users\\oloco\\AppData");
+  const navigation = createContentNavigation("C:\\Users\\FixtureUser\\AppData");
 
-  assert.equal(navigation.currentPath, "C:\\Users\\oloco\\AppData");
+  assert.equal(navigation.currentPath, "C:\\Users\\FixtureUser\\AppData");
   assert.equal(navigation.currentPath, navigation.rootPath);
   assert.deepEqual(navigation.history, [navigation.rootPath]);
   assert.equal(canGoBackContent(navigation), false);
-  assert.equal(navigateContentPath(navigation, "C:\\Users\\oloco\\AppData\\Local"), true);
-  assert.equal(navigation.currentPath, "C:\\Users\\oloco\\AppData\\Local");
+  assert.equal(navigateContentPath(navigation, "C:\\Users\\FixtureUser\\AppData\\Local"), true);
+  assert.equal(navigation.currentPath, "C:\\Users\\FixtureUser\\AppData\\Local");
   assert.equal(canGoBackContent(navigation), true);
-  assert.equal(backContentPath(navigation), "C:\\Users\\oloco\\AppData");
+  assert.equal(backContentPath(navigation), "C:\\Users\\FixtureUser\\AppData");
   assert.equal(canGoBackContent(navigation), false);
 });
 
 test("breadcrumb representa ancestrais clicáveis dentro da raiz", () => {
-  const navigation = createContentNavigation("C:\\Users\\oloco\\AppData");
-  navigateContentPath(navigation, "C:\\Users\\oloco\\AppData\\Local\\NVIDIA Corporation");
+  const navigation = createContentNavigation("C:\\Users\\FixtureUser\\AppData");
+  navigateContentPath(navigation, "C:\\Users\\FixtureUser\\AppData\\Local\\NVIDIA Corporation");
 
   assert.deepEqual(contentBreadcrumbs(navigation), [
-    { label: "AppData", path: "C:\\Users\\oloco\\AppData" },
-    { label: "Local", path: "C:\\Users\\oloco\\AppData\\Local" },
-    { label: "NVIDIA Corporation", path: "C:\\Users\\oloco\\AppData\\Local\\NVIDIA Corporation" }
+    { label: "AppData", path: "C:\\Users\\FixtureUser\\AppData" },
+    { label: "Local", path: "C:\\Users\\FixtureUser\\AppData\\Local" },
+    { label: "NVIDIA Corporation", path: "C:\\Users\\FixtureUser\\AppData\\Local\\NVIDIA Corporation" }
   ]);
-  assert.equal(navigateContentPath(navigation, "C:\\Users\\oloco\\AppData\\Local"), true);
-  assert.equal(navigation.currentPath, "C:\\Users\\oloco\\AppData\\Local");
+  assert.equal(navigateContentPath(navigation, "C:\\Users\\FixtureUser\\AppData\\Local"), true);
+  assert.equal(navigation.currentPath, "C:\\Users\\FixtureUser\\AppData\\Local");
   assert.deepEqual(navigation.history, [
-    "C:\\Users\\oloco\\AppData",
-    "C:\\Users\\oloco\\AppData\\Local"
+    "C:\\Users\\FixtureUser\\AppData",
+    "C:\\Users\\FixtureUser\\AppData\\Local"
   ]);
-  assert.equal(backContentPath(navigation), "C:\\Users\\oloco\\AppData");
+  assert.equal(backContentPath(navigation), "C:\\Users\\FixtureUser\\AppData");
 });
 
 test("breadcrumb comprimido preserva raiz, pasta atual e níveis finais", () => {
@@ -63,10 +63,10 @@ test("breadcrumb comprimido preserva raiz, pasta atual e níveis finais", () => 
 });
 
 test("bloqueia navegação acima da raiz original", () => {
-  const navigation = createContentNavigation("C:\\Users\\oloco\\AppData");
+  const navigation = createContentNavigation("C:\\Users\\FixtureUser\\AppData");
 
-  assert.equal(canNavigateWithinRoot(navigation.rootPath, "C:\\Users\\oloco"), false);
-  assert.equal(navigateContentPath(navigation, "C:\\Users\\oloco"), false);
+  assert.equal(canNavigateWithinRoot(navigation.rootPath, "C:\\Users\\FixtureUser"), false);
+  assert.equal(navigateContentPath(navigation, "C:\\Users\\FixtureUser"), false);
   assert.equal(navigation.currentPath, navigation.rootPath);
   assert.equal(backContentPath(navigation), null);
 });
@@ -83,11 +83,11 @@ test("Voltar deriva o nível anterior do caminho mesmo com histórico incompleto
 
 test("reutiliza tamanho conhecido de largeFolders sem calcular pastas desconhecidas", () => {
   const scanSizes = knownLargeFolderSizes([
-    { path: "C:\\Users\\oloco\\AppData\\Local", size: 19 }
+    { path: "C:\\Users\\FixtureUser\\AppData\\Local", size: 19 }
   ]);
   const items = decorateContentItems([
-    { name: "Local", path: "C:\\Users\\oloco\\AppData\\Local", type: "Pasta", size: 0 },
-    { name: "Roaming", path: "C:\\Users\\oloco\\AppData\\Roaming", type: "Pasta", size: 0 }
+    { name: "Local", path: "C:\\Users\\FixtureUser\\AppData\\Local", type: "Pasta", size: 0 },
+    { name: "Roaming", path: "C:\\Users\\FixtureUser\\AppData\\Roaming", type: "Pasta", size: 0 }
   ], scanSizes, new Map());
 
   assert.deepEqual(items.map((item) => [item.name, item.sizeKnown, item.displaySize]), [

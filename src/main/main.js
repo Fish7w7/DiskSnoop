@@ -19,6 +19,9 @@ const {
 const { resolveBootBackground, resolveBootThemePreference } = require("./boot-theme");
 const { createTaskbarBadgeController } = require("./taskbar-badge");
 const { isSupportedLanguage, resolveInitialLanguage } = require("./system-language");
+const candidateSpace = require("../renderer/candidate-space");
+const { statIdentity } = require("../scanner/cleanup-context");
+const { verifiedReportItem, validateLiveSource, validateQuarantinedItem, validateRestoreDestination, assertCurrentIdentity, removeQuarantinedTree } = require("./quarantine-source");
 const {
   MIN_WINDOW_WIDTH,
   MIN_WINDOW_HEIGHT,
@@ -47,6 +50,7 @@ try {
 
 let mainWindow;
 let activeScan = null;
+let scanRevision = 0;
 let protectedActionCount = 0;
 let updateDownload = null;
 let autoUpdaterConfigured = false;
@@ -136,22 +140,37 @@ async function readJson(fileName, fallback) {
   }
 }
 
+async function readRecordList(fileName) {
+  try {
+    const records = JSON.parse(await fs.readFile(dataFile(fileName), "utf8"));
+    if (!Array.isArray(records)) throw new Error("Invalid record format");
+    return records;
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw new Error("Não foi possível ler os registros locais. Os registros existentes foram preservados.", { cause: error });
+  }
+}
+
 async function writeJson(fileName, value) {
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   await fs.writeFile(dataFile(fileName), JSON.stringify(value, null, 2), "utf8");
   return value;
 }
 
-async function writeSettings(settings) {
-  const temporaryFile = `settings-${crypto.randomUUID()}.tmp`;
+async function writeJsonAtomically(fileName, value) {
+  const temporaryFile = `${fileName}-${crypto.randomUUID()}.tmp`;
   try {
-    await writeJson(temporaryFile, settings);
-    await fs.rename(dataFile(temporaryFile), dataFile("settings.json"));
-    return settings;
+    await writeJson(temporaryFile, value);
+    await fs.rename(dataFile(temporaryFile), dataFile(fileName));
+    return value;
   } catch (error) {
     await fs.rm(dataFile(temporaryFile), { force: true }).catch(() => {});
     throw error;
   }
+}
+
+function writeSettings(settings) {
+  return writeJsonAtomically("settings.json", settings);
 }
 
 async function appendAuditEntry(action, details = {}) {
@@ -308,8 +327,8 @@ function send(channel, payload) {
 }
 
 function normalizeDriveRoot(letter) {
-  if (!letter) return "";
-  return letter.endsWith("\\") ? letter : `${letter}\\`;
+  if (typeof letter !== "string" || !/^[a-z]:[\\/]?$/i.test(letter)) throw new Error("Volume inválido.");
+  return `${letter.slice(0, 2)}\\`;
 }
 
 function friendlyFsError(error) {
@@ -329,26 +348,29 @@ function assertNotInternalPath(sourcePath, quarantineRoot) {
 }
 
 async function validateQuarantineSource(item, quarantineRoot) {
-  const sourcePath = item?.path;
-  if (!sourcePath) throw new Error("Caminho ausente para mover para quarentena.");
-  if (isSensitiveWindowsPath(sourcePath)) {
-    throw new Error("Este caminho parece sensivel para o Windows ou para aplicativos instalados. O DiskSnoop nao move esse tipo de item para quarentena.");
+  const history = await readJson("history.json", []);
+  if (activeScan || !item?.scanId || String(item.scanId) !== String(history[0]?.id)) {
+    throw new Error("O relatório não está atualizado. Faça um novo scan antes de mover itens.");
   }
-  assertNotInternalPath(sourcePath, quarantineRoot);
+  const snapshot = await findScanSnapshot(item.scanId);
+  const source = verifiedReportItem(snapshot?.result, item.path);
+  if (!source) throw new Error("Item protegido, de alto risco ou sem verificação atual. Revise o local ou faça um novo scan.");
+  assertNotInternalPath(source.path, quarantineRoot);
 
-  let stat;
-  try {
-    stat = await fs.lstat(sourcePath);
-  } catch {
-    throw new Error("O item nao existe mais no caminho original.");
+  const inventory = await installedAppsInventory.load();
+  const installed = installedLocations(inventory.apps).some((installLocation) => {
+    return sameOrInsidePath(source.path, installLocation)
+      || (source.kind === "directory" && sameOrInsidePath(installLocation, source.path));
+  });
+  if (installed || (source.kind === "directory" && /[\\/]appdata[\\/]/i.test(source.path) && !inventory.appxReliable)) {
+    throw new Error("Pasta protegida: aplicativo instalado ou inventário AppX indisponível.");
   }
-  if (stat.isSymbolicLink()) {
-    throw new Error("Links simbolicos, junctions e pontos de reparse nao sao movidos para quarentena. Abra o local e revise manualmente.");
-  }
-  if (!stat.isFile() && !stat.isDirectory()) {
-    throw new Error("Este tipo de item nao pode ser movido para quarentena com seguranca.");
-  }
-  return stat;
+  return source;
+}
+
+function installedLocations(apps) {
+  return apps.map(({ installLocation }) => String(installLocation || "").trim())
+    .filter((location) => path.isAbsolute(location) && path.normalize(location) !== path.parse(location).root);
 }
 
 async function assertSafeQuarantineRecord(record) {
@@ -363,36 +385,54 @@ async function assertSafeQuarantineRecord(record) {
 }
 
 async function copyFileThenRemove(source, target, sourceStat) {
-  const tempTarget = `${target}.partial-${Date.now()}`;
+  let copiedStat;
   try {
-    await fs.copyFile(source, tempTarget, fscb.constants.COPYFILE_EXCL);
-    const copiedStat = await fs.lstat(tempTarget);
-    if (!copiedStat.isFile() || copiedStat.size !== sourceStat.size) {
+    await fs.copyFile(source, target, fscb.constants.COPYFILE_EXCL);
+    copiedStat = await fs.lstat(target);
+    if (!copiedStat.isFile() || copiedStat.nlink !== 1 || copiedStat.size !== sourceStat.size) {
       throw new Error("A copia de seguranca nao bate com o arquivo original. Nada foi removido.");
     }
-    await fs.rename(tempTarget, target);
-    await fs.rm(source, { force: true });
+    await assertCurrentIdentity(source, sourceStat);
+    await assertCurrentIdentity(target, copiedStat);
+    await fs.unlink(source);
   } catch (error) {
-    await fs.rm(tempTarget, { recursive: true, force: true }).catch(() => {});
-    await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+    if (copiedStat) await assertCurrentIdentity(target, copiedStat).then(() => fs.unlink(target)).catch(() => {});
     throw friendlyFsError(error);
   }
 }
 
-async function movePath(source, target) {
-  await fs.mkdir(path.dirname(target), { recursive: true });
+async function movePath(source, target, sourceStat, { restoring = false } = {}) {
+  await validateRestoreDestination(target);
+  await assertCurrentIdentity(source, sourceStat);
+  if (restoring && sourceStat.isFile()) {
+    try {
+      await fs.link(source, target);
+    } catch (error) {
+      if (!["EXDEV", "ENOTSUP", "EPERM", "ENOSYS"].includes(error.code)) throw friendlyFsError(error);
+      return copyFileThenRemove(source, target, sourceStat);
+    }
+    const isOriginal = (stat) => stat.isFile() && stat.dev === sourceStat.dev && stat.ino === sourceStat.ino
+      && stat.birthtimeMs === sourceStat.birthtimeMs && stat.size === sourceStat.size && stat.mtimeMs === sourceStat.mtimeMs;
+    try {
+      const [current, linked] = await Promise.all([fs.lstat(source), fs.lstat(target)]);
+      if (!isOriginal(current) || !isOriginal(linked) || current.nlink !== 2 || linked.nlink !== 2) {
+        throw new Error("A origem ou o destino mudou durante a restauração.");
+      }
+      await fs.unlink(source);
+    } catch (error) {
+      const retained = await fs.lstat(target).catch(() => null);
+      if (retained && isOriginal(retained) && retained.nlink === 2) await fs.unlink(target).catch(() => {});
+      throw friendlyFsError(error);
+    }
+    return;
+  }
   try {
     await fs.rename(source, target);
   } catch (error) {
-    try {
-      if (error.code !== "EXDEV") throw friendlyFsError(error);
-      const sourceStat = await fs.lstat(source);
-      assertCanCrossVolumeMove(sourceStat);
-      await copyFileThenRemove(source, target, sourceStat);
-    } catch (moveError) {
-      await fs.rm(target, { recursive: true, force: true }).catch(() => {});
-      throw moveError;
-    }
+    if (error.code !== "EXDEV") throw friendlyFsError(error);
+    await assertCurrentIdentity(source, sourceStat);
+    assertCanCrossVolumeMove(sourceStat);
+    await copyFileThenRemove(source, target, sourceStat);
   }
 }
 
@@ -406,7 +446,7 @@ function normalizeQuarantineRoot(selectedPath) {
 }
 
 async function listQuarantine() {
-  return readJson("quarantine.json", []);
+  return readRecordList("quarantine.json");
 }
 
 async function quarantineRoots(records = []) {
@@ -440,7 +480,7 @@ async function pathSize(targetPath) {
 }
 
 function recoveredQuarantineName(fileName) {
-  return fileName.replace(/^\d{10,}-[a-f0-9]+-/i, "") || fileName;
+  return fileName.replace(/^\d{10,}-(?:[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9]+)-/i, "") || fileName;
 }
 
 function stableQuarantineId(record) {
@@ -470,8 +510,13 @@ async function syncedQuarantine() {
   const records = await listQuarantine();
   let changed = ensureUniqueQuarantineIds(records);
   const knownPaths = new Set(records.map((record) => path.normalize(record.quarantinePath || "").toLowerCase()).filter(Boolean));
+  const inspectEntry = async (itemPath) => {
+    if (!itemPath) return null;
+    try { return await fs.lstat(itemPath); }
+    catch (error) { return error.code === "ENOENT" || error.code === "ENOTDIR" ? null : undefined; }
+  };
 
-  for (const record of records) {
+  for (const record of [...records]) {
     if (record.quarantinePath && !record.quarantineRoot) {
       const root = path.dirname(record.quarantinePath);
       if (quarantineFolderName(root)) {
@@ -479,8 +524,27 @@ async function syncedQuarantine() {
         changed = true;
       }
     }
-    const existsInQuarantine = record.quarantinePath && fscb.existsSync(record.quarantinePath);
-    if (existsInQuarantine && record.status !== "Em quarentena") {
+    const target = await inspectEntry(record.quarantinePath);
+    if (target === undefined) continue;
+    if (record.status === "Movimentação pendente") {
+      const source = await inspectEntry(record.originalPath);
+      if (source === undefined || (source && target)) continue;
+      if (source) records.splice(records.indexOf(record), 1);
+      else if (target) {
+        const identity = statIdentity(target);
+        if (target.isSymbolicLink() || !record.sourceIdentity
+          || !identity.every((value, index) => index === 4 || value === record.sourceIdentity[index])) continue;
+        record.quarantineIdentity = identity;
+        record.status = "Em quarentena";
+      }
+      else {
+        record.status = "Arquivo ausente";
+        record.missingAt = new Date().toISOString();
+      }
+      changed = true;
+      continue;
+    }
+    if (target && record.status === "Arquivo ausente") {
       record.status = "Em quarentena";
       delete record.deletedAt;
       delete record.restoredAt;
@@ -488,7 +552,7 @@ async function syncedQuarantine() {
       changed = true;
       continue;
     }
-    if (record.status === "Em quarentena" && !existsInQuarantine) {
+    if (record.status === "Em quarentena" && !target) {
       record.status = "Arquivo ausente";
       record.missingAt = new Date().toISOString();
       changed = true;
@@ -498,6 +562,8 @@ async function syncedQuarantine() {
   for (const root of await quarantineRoots(records)) {
     let entries = [];
     try {
+      const stat = await fs.lstat(root);
+      if (!stat.isDirectory() || stat.isSymbolicLink() || candidateSpace.pathKey(await fs.realpath(root)) !== candidateSpace.pathKey(root)) continue;
       entries = await fs.readdir(root, { withFileTypes: true });
     } catch {
       continue;
@@ -530,7 +596,7 @@ async function syncedQuarantine() {
 }
 
 async function saveQuarantine(items) {
-  return writeJson("quarantine.json", items);
+  return writeJsonAtomically("quarantine.json", items);
 }
 
 function ipcOk(value) {
@@ -542,14 +608,14 @@ function ipcError(error) {
 }
 
 async function saveScanSnapshot(result) {
-  const snapshots = await readJson("scan-snapshots.json", []);
+  const snapshots = await readRecordList("scan-snapshots.json");
   snapshots.unshift({
     id: result.id,
     date: result.finishedAt,
     drive: result.drive?.letter || "",
     result
   });
-  return writeJson("scan-snapshots.json", snapshots.slice(0, 20));
+  return writeJsonAtomically("scan-snapshots.json", snapshots.slice(0, 20));
 }
 
 async function findScanSnapshot(id) {
@@ -560,7 +626,7 @@ async function findScanSnapshot(id) {
 }
 
 async function updateLatestHistory(patch) {
-  const history = await readJson("history.json", []);
+  const history = await readRecordList("history.json");
   if (!history.length) return history;
   const hasScanId = Object.prototype.hasOwnProperty.call(patch, "scanId");
   if (hasScanId && !patch.scanId) return history;
@@ -580,7 +646,7 @@ async function updateLatestHistory(patch) {
   delete history[targetIndex].movedToQuarantineDelta;
   delete history[targetIndex].permanentlyDeletedDelta;
   delete history[targetIndex].restoredFromQuarantineDelta;
-  await writeJson("history.json", history.slice(0, 50));
+  await writeJsonAtomically("history.json", history.slice(0, 50));
   return history;
 }
 
@@ -1278,11 +1344,17 @@ ipcMain.handle("history:list", async () => {
     snapshotAvailable: snapshotIds.has(String(item.id))
   }));
 });
-ipcMain.handle("history:clear", async () => {
-  await writeJson("history.json", []);
-  await writeJson("scan-snapshots.json", []);
-  return [];
-});
+ipcMain.handle("history:clear", () => queueQuarantineAction(async () => {
+  if (activeScan) throw new Error("Finalize o scan antes de limpar o histórico.");
+  protectedActionCount += 1;
+  try {
+    await writeJsonAtomically("history.json", []);
+    await writeJsonAtomically("scan-snapshots.json", []);
+    return [];
+  } finally {
+    protectedActionCount -= 1;
+  }
+}));
 ipcMain.handle("scan:snapshot", async (_event, id) => {
   const snapshot = await findScanSnapshot(id);
   return snapshot?.result || null;
@@ -1344,7 +1416,7 @@ ipcMain.handle("update:rememberLater", () => queueSettingsSave(async () => {
   await writeSettings(settings);
   return saveUpdateState({ remindAfter: settings.update.remindAfter, hiddenUntilReminder: true });
 }));
-ipcMain.handle("quarantine:list", async () => syncedQuarantine());
+ipcMain.handle("quarantine:list", () => queueQuarantineAction(syncedQuarantine));
 
 ipcMain.handle("path:listContents", async (_event, targetPath) => {
   if (!targetPath) return ipcError(new Error("Caminho ausente."));
@@ -1484,31 +1556,50 @@ ipcMain.handle("ignore:add", (_event, itemPath) => queueSettingsSave(async () =>
   return settings;
 }));
 
-ipcMain.handle("quarantine:move", async (_event, item) => {
+let quarantineActions = Promise.resolve();
+
+function queueQuarantineAction(action) {
+  const result = quarantineActions.then(action);
+  quarantineActions = result.catch(() => {});
+  return result;
+}
+
+ipcMain.handle("quarantine:move", (_event, item) => queueQuarantineAction(async () => {
   protectedActionCount += 1;
+  const reportRevision = scanRevision;
   try {
     const settings = await getSettings();
     const quarantineRoot = normalizeQuarantineRoot(settings.quarantinePath);
-    const sourceStat = await validateQuarantineSource(item, quarantineRoot);
-    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const target = path.join(quarantineRoot, `${id}-${safeName(path.basename(item.path))}`);
-    await movePath(item.path, target);
+    const source = await validateQuarantineSource(item, quarantineRoot);
     const records = await syncedQuarantine();
+    const id = `${Date.now()}-${crypto.randomUUID()}`;
+    const target = path.join(quarantineRoot, `${id}-${safeName(path.basename(source.path))}`);
+    await validateRestoreDestination(target);
+    await fs.mkdir(quarantineRoot, { recursive: true });
+    const sourceStat = await validateLiveSource(source);
+    if (activeScan || reportRevision !== scanRevision) throw new Error("O relatório mudou. Faça um novo scan antes de mover itens.");
     const record = {
       id,
-      name: item.name || path.basename(item.path),
-      originalPath: item.path,
+      name: source.name || path.basename(source.path),
+      originalPath: source.path,
       quarantinePath: target,
       quarantineRoot,
-      size: item.size || sourceStat.size || 0,
+      size: sourceStat.isFile() ? sourceStat.size : source.size,
       movedAt: new Date().toISOString(),
-      status: "Em quarentena",
-      type: item.type || (sourceStat.isDirectory() ? "Pasta" : "Arquivo"),
+      status: "Movimentação pendente",
+      sourceIdentity: statIdentity(sourceStat),
+      type: source.type || (sourceStat.isDirectory() ? "Pasta" : "Arquivo"),
       scanId: item.scanId || ""
     };
     records.unshift(record);
     await saveQuarantine(records);
-    await updateLatestHistory({ scanId: record.scanId, movedToQuarantineDelta: record.size });
+    if (activeScan || reportRevision !== scanRevision) throw new Error("O relatório mudou. Faça um novo scan antes de mover itens.");
+    await movePath(source.path, target, sourceStat);
+    record.quarantineIdentity = statIdentity(await fs.lstat(target));
+    record.status = "Em quarentena";
+    await saveQuarantine(records);
+    await updateLatestHistory({ scanId: record.scanId, movedToQuarantineDelta: record.size }).catch((error) =>
+      appendAuditEntry("quarantine-history-update-failed", { scanId: record.scanId, error: error.message }));
     await appendAuditEntry("quarantine-move", {
       result: "success",
       originalPath: record.originalPath,
@@ -1529,9 +1620,9 @@ ipcMain.handle("quarantine:move", async (_event, item) => {
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
-});
+}));
 
-ipcMain.handle("quarantine:restore", async (_event, id) => {
+ipcMain.handle("quarantine:restore", (_event, id) => queueQuarantineAction(async () => {
   protectedActionCount += 1;
   let auditRecord = null;
   try {
@@ -1546,25 +1637,15 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
     if (isSensitiveWindowsPath(record.originalPath) && !isProtectedAppDataPath(record.originalPath)) {
       throw new Error("O caminho original fica em area sensivel. Por seguranca, restaure manualmente pelo Explorer.");
     }
-    if (!fscb.existsSync(record.quarantinePath)) {
-      record.status = "Arquivo ausente";
-      record.missingAt = new Date().toISOString();
-      await saveQuarantine(records);
-      throw new Error("O arquivo nao existe mais na pasta de quarentena. O registro foi marcado como ausente.");
-    }
-    const quarantineStat = await fs.lstat(record.quarantinePath);
-    if (quarantineStat.isSymbolicLink()) {
-      throw new Error("O item em quarentena virou um link simbolico ou ponto de reparse. Operacao bloqueada por seguranca.");
-    }
-    if (fscb.existsSync(record.originalPath)) {
-      throw new Error("O caminho original ja existe. Restauracao manual recomendada.");
-    }
+    await validateRestoreDestination(record.originalPath);
     await fs.mkdir(path.dirname(record.originalPath), { recursive: true });
-    await movePath(record.quarantinePath, record.originalPath);
+    const sourceStat = await validateQuarantinedItem(record.quarantinePath, { expected: record.quarantineIdentity });
+    await movePath(record.quarantinePath, record.originalPath, sourceStat, { restoring: true });
     record.status = "Restaurado";
     record.restoredAt = new Date().toISOString();
     await saveQuarantine(records);
-    await updateLatestHistory({ scanId: record.scanId, restoredFromQuarantineDelta: record.size || 0 });
+    await updateLatestHistory({ scanId: record.scanId, restoredFromQuarantineDelta: record.size || 0 }).catch((error) =>
+      appendAuditEntry("quarantine-history-update-failed", { scanId: record.scanId, error: error.message }));
     await appendAuditEntry("quarantine-restore", {
       result: "success",
       originalPath: record.originalPath,
@@ -1584,9 +1665,9 @@ ipcMain.handle("quarantine:restore", async (_event, id) => {
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
-});
+}));
 
-ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
+ipcMain.handle("quarantine:deletePermanent", (event, id) => queueQuarantineAction(async () => {
   protectedActionCount += 1;
   let auditRecord = null;
   try {
@@ -1597,24 +1678,30 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
     if (record.status !== "Em quarentena") throw new Error("Este item nao esta disponivel para exclusao permanente.");
     await assertSafeQuarantineRecord(record);
     assertPermanentDeletionAllowed(record);
-    if (!fscb.existsSync(record.quarantinePath)) {
-      record.status = "Arquivo ausente";
-      record.missingAt = new Date().toISOString();
-      await saveQuarantine(records);
-      throw new Error("O arquivo nao existe mais na pasta de quarentena. O registro foi marcado como ausente.");
-    }
-    const quarantineStat = await fs.lstat(record.quarantinePath);
-    if (quarantineStat.isSymbolicLink()) {
-      throw new Error("O item em quarentena virou um link simbolico ou ponto de reparse. Abra a pasta e revise manualmente.");
-    }
-    await fs.rm(record.quarantinePath, { recursive: true, force: true });
+    if (!mainWindow || mainWindow.isDestroyed() || event?.sender !== mainWindow.webContents) throw new Error("A confirmação requer a janela do DiskSnoop.");
+    const { language } = await getSettings();
+    const messages = loadRendererLocale(language).messages;
+    const confirmation = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: messages["cleanup.nativeDeleteTitle"],
+      message: messages["cleanup.nativeDeleteMessage"],
+      detail: record.quarantinePath,
+      buttons: [messages["cleanup.nativeCancel"], messages["cleanup.nativeDelete"]],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    });
+    if (confirmation.response !== 1) return ipcOk(null);
+    const sourceStat = await validateQuarantinedItem(record.quarantinePath, { originalPath: record.originalPath, deleting: true, expected: record.quarantineIdentity });
+    await removeQuarantinedTree(record.quarantinePath, sourceStat, record.originalPath);
     if (fscb.existsSync(record.quarantinePath)) {
       throw new Error("O Windows nao confirmou a exclusao do item. Abra a quarentena e revise manualmente.");
     }
     record.status = "Excluido permanentemente";
     record.deletedAt = new Date().toISOString();
     await saveQuarantine(records);
-    await updateLatestHistory({ scanId: record.scanId, permanentlyDeletedDelta: record.size || 0 });
+    await updateLatestHistory({ scanId: record.scanId, permanentlyDeletedDelta: record.size || 0 }).catch((error) =>
+      appendAuditEntry("quarantine-history-update-failed", { scanId: record.scanId, error: error.message }));
     await appendAuditEntry("quarantine-delete-permanent", {
       result: "success",
       originalPath: record.originalPath,
@@ -1635,9 +1722,9 @@ ipcMain.handle("quarantine:deletePermanent", async (_event, id) => {
   } finally {
     protectedActionCount = Math.max(0, protectedActionCount - 1);
   }
-});
+}));
 
-ipcMain.handle("quarantine:forgetMissing", async (_event, id) => {
+ipcMain.handle("quarantine:forgetMissing", (_event, id) => queueQuarantineAction(async () => {
   try {
     const records = await syncedQuarantine();
     const index = records.findIndex((entry) => entry.id === id);
@@ -1651,77 +1738,100 @@ ipcMain.handle("quarantine:forgetMissing", async (_event, id) => {
   } catch (error) {
     return ipcError(error);
   }
-});
+}));
 
-ipcMain.handle("quarantine:cleanupRecords", async () => {
+ipcMain.handle("quarantine:cleanupRecords", () => queueQuarantineAction(async () => {
   try {
     const records = await syncedQuarantine();
-    const kept = records.filter((record) => record.status === "Em quarentena");
+    const kept = records.filter((record) => ["Em quarentena", "Movimentação pendente"].includes(record.status));
     const removed = records.length - kept.length;
     if (removed) await saveQuarantine(kept);
     return ipcOk({ removed });
   } catch (error) {
     return ipcError(error);
   }
-});
+}));
 
 ipcMain.handle("scan:start", async (_event, options) => {
+  if (protectedActionCount) throw new Error("Finalize a operação de arquivos antes de iniciar o scan.");
+  const driveRoot = normalizeDriveRoot(options?.drive?.letter);
+  const revision = ++scanRevision;
   if (activeScan) {
     activeScan.kill();
     activeScan = null;
   }
 
   const settings = await getSettings();
-  const driveRoot = normalizeDriveRoot(options.drive.letter);
-  activeScan = fork(paths.scanner, [], { windowsHide: true, stdio: ["pipe", "pipe", "pipe", "ipc"] });
+  if (protectedActionCount) throw new Error("Finalize a operação de arquivos antes de iniciar o scan.");
+  if (revision !== scanRevision) return { ok: false };
+  const worker = fork(paths.scanner, [], { windowsHide: true, stdio: ["pipe", "pipe", "pipe", "ipc"] });
+  activeScan = worker;
 
-  activeScan.on("message", async (message) => {
-    if (!message || !message.type) return;
+  worker.on("message", async (message) => {
+    if (activeScan !== worker || !message?.type) return;
     if (message.type === "done") {
-      const history = await readJson("history.json", []);
-      const freshDrives = await getDrives();
-      const freshDrive = freshDrives.find((drive) => drive.letter === options.drive.letter) || options.drive;
-      const reviewable = message.result.candidates.reduce((sum, item) => sum + (item.size || 0), 0);
-      message.result.drive = { ...message.result.drive, ...freshDrive };
-      await saveScanSnapshot(message.result);
-      history.unshift({
-        id: message.result.id,
-        date: message.result.finishedAt,
-        drive: options.drive.letter,
-        candidates: message.result.candidates.length,
-        duplicates: message.result.duplicateGroups?.length || 0,
-        skipped: message.result.skipped || 0,
-        reviewable,
-        duplicateReviewable: (message.result.duplicateGroups || []).reduce((sum, group) => sum + (group.reviewableBytes || 0), 0),
-        usedBefore: options.drive.used,
-        freeBefore: options.drive.free,
-        usedAfter: freshDrive.used,
-        freeAfter: freshDrive.free,
-        durationMs: new Date(message.result.finishedAt).getTime() - new Date(message.result.startedAt).getTime(),
-        movedToQuarantine: 0,
-        restoredFromQuarantine: 0,
-        permanentlyDeleted: 0
-      });
-      await writeJson("history.json", history.slice(0, 50));
-      send("scan:done", message.result);
-      taskbarBadge.markScanCompleteIfUnfocused(mainWindow, settings.language);
-      activeScan = null;
+      try {
+        const history = await readRecordList("history.json");
+        const freshDrives = await getDrives();
+        if (activeScan !== worker) return;
+        const freshDrive = freshDrives.find((drive) => drive.letter === options.drive.letter) || options.drive;
+        const reviewable = candidateSpace.uniqueBytes(message.result.candidates.filter(candidateSpace.isReviewable));
+        message.result.drive = { ...message.result.drive, ...freshDrive };
+        await saveScanSnapshot(message.result);
+        if (activeScan !== worker) return;
+        history.unshift({
+          id: message.result.id,
+          date: message.result.finishedAt,
+          drive: options.drive.letter,
+          candidates: message.result.candidates.length,
+          duplicates: message.result.duplicateGroups?.length || 0,
+          skipped: message.result.skipped || 0,
+          reviewable,
+          duplicateReviewable: (message.result.duplicateGroups || []).reduce((sum, group) => sum + (group.reviewableBytes || 0), 0),
+          usedBefore: options.drive.used,
+          freeBefore: options.drive.free,
+          usedAfter: freshDrive.used,
+          freeAfter: freshDrive.free,
+          durationMs: new Date(message.result.finishedAt).getTime() - new Date(message.result.startedAt).getTime(),
+          movedToQuarantine: 0,
+          restoredFromQuarantine: 0,
+          permanentlyDeleted: 0
+        });
+        await writeJsonAtomically("history.json", history.slice(0, 50));
+        if (activeScan !== worker) return;
+        send("scan:done", message.result);
+        taskbarBadge.markScanCompleteIfUnfocused(mainWindow, settings.language);
+      } catch (error) {
+        console.error("Scan completion failed:", error);
+        if (activeScan === worker) send("scan:error", { error: "Não foi possível concluir o scan com segurança." });
+      } finally {
+        if (activeScan === worker) activeScan = null;
+        if (worker.connected) worker.disconnect();
+      }
       return;
     }
     send(`scan:${message.type}`, message.payload);
   });
 
-  activeScan.on("exit", (code) => {
-    if (activeScan && code !== 0) send("scan:error", { error: "O scanner foi encerrado antes de concluir." });
+  worker.on("exit", (code) => {
+    if (activeScan !== worker) return;
+    if (code !== 0) send("scan:error", { error: "O scanner foi encerrado antes de concluir." });
     activeScan = null;
   });
+  worker.on("error", (error) => {
+    console.error("Scanner worker failed:", error);
+    if (activeScan !== worker) return;
+    activeScan = null;
+    send("scan:error", { error: "Não foi possível concluir o scan com segurança." });
+  });
 
-  activeScan.send({ type: "start", payload: { drive: options.drive, root: driveRoot, settings } });
+  const installedRoots = installedLocations(installedAppsInventory.cachedApps());
+  worker.send({ type: "start", payload: { drive: options.drive, root: driveRoot, settings: { ...settings, installedRoots } } });
   return { ok: true };
 });
 
 ipcMain.handle("scan:control", async (_event, action) => {
-  if (!activeScan) return { ok: false };
+  if (!activeScan || !["pause", "resume", "cancel"].includes(action)) return { ok: false };
   activeScan.send({ type: action });
   return { ok: true };
 });

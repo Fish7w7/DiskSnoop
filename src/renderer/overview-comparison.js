@@ -11,11 +11,17 @@
     return Math.abs(Number(deltaBytes) || 0) < reviewableNoiseThreshold(currentReviewableBytes);
   }
 
+  function observedFreeDelta({ freeBefore, freeAfter } = {}) {
+    if (!Number.isFinite(freeBefore) || !Number.isFinite(freeAfter) || freeBefore < 0 || freeAfter < 0) return null;
+    return freeAfter - freeBefore;
+  }
+
   const api = {
     REVIEWABLE_NOISE_FLOOR_BYTES,
     REVIEWABLE_NOISE_RATIO,
     reviewableNoiseThreshold,
-    isReviewableDeltaStable
+    isReviewableDeltaStable,
+    observedFreeDelta
   };
 
   if (typeof module !== "undefined" && module.exports) {

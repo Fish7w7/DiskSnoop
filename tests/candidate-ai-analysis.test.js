@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { replaceSelectionWithAiDelete } = require("../src/renderer/candidate-batch-actions");
+const { canMoveToQuarantineByPolicy } = require("../src/main/quarantine-safety");
 
 const {
   buildAnalysisPrompt,
@@ -44,7 +46,7 @@ test("ignora texto livre antes e depois das linhas classificadas", () => {
   assert.equal(parsed.invalid, 0);
 });
 
-test("ignora IDs desconhecidos, repetidos e estados inválidos", () => {
+test("ignora IDs desconhecidos, classificações conflitantes e estados inválidos", () => {
   const imported = associateAnalysisResponse([
     "candidate-cache-a1 | APAGAR",
     "candidate-cache-a1 | MANTER",
@@ -52,9 +54,20 @@ test("ignora IDs desconhecidos, repetidos e estados inválidos", () => {
     "candidate-node-b2 | REMOVER"
   ].join("\n"), candidates);
 
-  assert.equal(imported.classifications.get("candidate-cache-a1"), "APAGAR");
+  assert.equal(imported.classifications.has("candidate-cache-a1"), false);
   assert.equal(imported.classifications.has("unknown-id"), false);
-  assert.equal(imported.notFound, 3);
+  assert.equal(imported.notFound, 4);
+});
+
+test("APAGAR de outro scan ou para risco alto e protegido não habilita seleção", () => {
+  const current = candidates.map((item, index) => ({ ...item, riskLevel: ["low", "high", "protected"][index] }));
+  const response = ["candidate-old-run | APAGAR", ...current.map((item) => `${item.id} | APAGAR`)].join("\n");
+  const imported = associateAnalysisResponse(response, current);
+  const selection = new Set();
+  const summary = replaceSelectionWithAiDelete(selection, current, imported.classifications, canMoveToQuarantineByPolicy);
+  assert.equal(imported.notFound, 1);
+  assert.deepEqual([...selection], ["candidate-cache-a1"]);
+  assert.equal(summary.protectedCount, 2);
 });
 
 test("associa cada classificação ao candidato correspondente", () => {

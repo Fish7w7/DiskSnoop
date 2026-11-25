@@ -3,6 +3,8 @@ const fscb = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { isSensitiveWindowsPath } = require("../main/quarantine-safety");
+const candidateSpace = require("../renderer/candidate-space");
+const { classifyFile, classifyFolder, cacheChildLayout, directoryProtection, directoryContentRestriction, entryNames, protectedContext, statIdentity } = require("./cleanup-context");
 
 let paused = false;
 let cancelled = false;
@@ -11,16 +13,6 @@ let lastProgressAt = 0;
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
-
-const safeReviewFolders = new Set(["node_modules", "dist", "build", ".next", ".cache", ".turbo", "coverage", "target", "obj"]);
-const devFolders = new Set(["node_modules", ".venv", "dist", "build", ".next", ".turbo", "coverage", "target", "bin", "obj"]);
-const installerExtensions = new Set([".exe", ".msi", ".iso"]);
-const archiveExtensions = new Set([".zip", ".rar", ".7z"]);
-const tempExtensions = new Set([".tmp", ".temp", ".bak", ".old"]);
-const MIN_INSTALLER_CANDIDATE_SIZE = 50 * MB;
-const MIN_ARCHIVE_CANDIDATE_SIZE = 50 * MB;
-const MIN_DOWNLOAD_CANDIDATE_SIZE = 10 * MB;
-const MIN_TEMP_CANDIDATE_SIZE = 10 * MB;
 
 const state = {
   files: 0,
@@ -33,6 +25,7 @@ const state = {
   duplicateBuckets: new Map(),
   duplicateHashSkipped: 0,
   currentPath: "",
+  candidateRunId: "",
   startedAt: ""
 };
 
@@ -69,37 +62,23 @@ function isSensitive(itemPath) {
   return isSensitiveWindowsPath(itemPath);
 }
 
-function ageDays(date) {
-  return (Date.now() - date.getTime()) / 86400000;
-}
-
-function isOld(date) {
-  return ageDays(date) >= config.oldFileDays;
-}
-
-function isDownloadsPath(itemPath) {
-  return toLowerPath(itemPath).replaceAll("/", "\\").includes("\\downloads\\");
-}
-
 function isIgnored(itemPath) {
-  const normalized = toLowerPath(path.resolve(itemPath));
-  return config.ignoredPaths.some((ignored) => {
-    const ignoredPath = toLowerPath(path.resolve(ignored));
-    return normalized === ignoredPath || normalized.startsWith(`${ignoredPath}${path.sep}`);
-  });
+  return config.ignoredPaths.some((ignored) => isInsideRoot(itemPath, ignored));
 }
 
 function isInsideRoot(itemPath, rootPath) {
   const normalized = toLowerPath(path.resolve(itemPath));
   const root = toLowerPath(path.resolve(rootPath));
-  return normalized === root || normalized.startsWith(`${root}${path.sep}`);
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  return normalized === root || normalized.startsWith(prefix);
 }
 
 function scanRoots(rootPath) {
-  const included = (config.includedPaths || [])
-    .filter(Boolean)
-    .filter((itemPath) => isInsideRoot(itemPath, rootPath));
-  return included.length ? [...new Set(included)] : [rootPath];
+  const requested = (config.includedPaths || []).filter(Boolean);
+  if (!requested.length) return [rootPath];
+  const included = requested.filter((itemPath) => path.isAbsolute(itemPath) && isInsideRoot(itemPath, rootPath));
+  if (!included.length) throw new Error("Nenhuma pasta incluída pertence ao volume selecionado.");
+  return candidateSpace.removeCoveredItems(included.map((itemPath) => ({ path: itemPath, kind: "directory" }))).map((item) => item.path);
 }
 
 async function waitIfPaused() {
@@ -125,18 +104,10 @@ function maybeProgress(force = false) {
   });
 }
 
-function securityForPath(itemPath, kind) {
-  if (isSensitive(itemPath)) return "Sensivel";
-  if (kind === "personal") return "Verificar antes";
-  if (kind === "logs" || kind === "temporary") return "Provavel removivel";
-  return "Seguro revisar";
-}
-
 function addCandidate(candidate) {
   if (!candidate.path || candidate.size <= 0) return;
-  if (candidate.security === "Sensivel") return;
   state.candidates.push({
-    id: `${candidate.type}-${state.candidates.length}-${Buffer.from(candidate.path).toString("base64").slice(0, 14)}`,
+    id: `candidate-${state.candidateRunId}-${state.candidates.length}`,
     ...candidate
   });
 }
@@ -152,7 +123,9 @@ function trackDuplicateCandidate(filePath, stat) {
     name,
     path: filePath,
     size: stat.size,
-    modifiedAt: stat.mtime.toISOString()
+    modifiedAt: stat.mtime.toISOString(),
+    kind: "file",
+    identity: statIdentity(stat)
   });
   state.duplicateBuckets.set(key, list);
 }
@@ -247,136 +220,32 @@ function summarizeChild(record, child) {
   if (record.children.length > 8) record.children.length = 8;
 }
 
-function normalizedWindowsPath(value) {
-  return String(value || "").replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
-}
-
-function isInstalledSoftwarePath(itemPath) {
-  const normalized = normalizedWindowsPath(itemPath);
-  return normalized.includes("\\program files\\")
-    || normalized.includes("\\program files (x86)\\")
-    || normalized.includes("\\windowsapps\\")
-    || normalized.includes("\\appdata\\local\\")
-    || normalized.includes("\\appdata\\roaming\\")
-    || /\\\.vscode(?:-insiders)?\\extensions\\/.test(normalized)
-    || /\\app\.asar(?:\.unpacked)?(?:\\|$)/.test(normalized)
-    || /\\resources\\app(?:\\|$)/.test(normalized)
-    || /\\(?:install|installation|launchers?|runtimes?|sdks?|tools)(?:\\|$)/.test(normalized);
-}
-
-function folderType(name, dirPath, settings = config || {}) {
-  const lower = name.toLowerCase();
-  if (devFolders.has(lower) && isInstalledSoftwarePath(dirPath)) return null;
-  if (lower === "node_modules") {
-    if (settings.detectNodeModules === false) return null;
-    return { type: "Projetos dev", reason: "Dependencias Node podem ser recriadas com npm install quando o projeto ainda existe." };
-  }
-  if (lower === ".venv") {
-    if (settings.detectBuildCaches === false) return null;
-    return { type: "Projetos dev", reason: "Ambiente Python local geralmente pode ser recriado a partir das dependencias do projeto." };
-  }
-  if (["dist", "build", ".next", ".turbo", "coverage", "target", "bin", "obj"].includes(lower)) {
-    if (settings.detectBuildCaches === false) return null;
-    return { type: "Projetos dev", reason: "Pasta de build/cache de projeto; costuma ser recriavel pelo processo de desenvolvimento." };
-  }
-  if (lower.includes("cache") || lower === ".cache") {
-    if (settings.detectBuildCaches === false) return null;
-    return { type: "Caches", reason: "Cache local detectado. Revise antes, mas normalmente e um dado recriavel." };
-  }
-  if (isDownloadsPath(dirPath)) {
-    if (settings.detectOldDownloads === false) return null;
-    return { type: "Downloads antigos", reason: "Conteudo na pasta Downloads com idade acima do limite configurado." };
-  }
-  return null;
-}
-
-function isChildPath(childPath, parentPath) {
-  const child = normalizedWindowsPath(childPath);
-  const parent = normalizedWindowsPath(parentPath);
-  return Boolean(child && parent && child !== parent && child.startsWith(`${parent}\\`));
-}
-
-function hasEquivalentCandidateClassification(left, right) {
-  return left.type === right.type
-    && (left.security || left.risk || "") === (right.security || right.risk || "");
-}
-
 function removeRedundantChildCandidates(candidates) {
-  return candidates.filter((candidate, index) => !candidates.some((possibleParent, parentIndex) => (
-    index !== parentIndex
-      && hasEquivalentCandidateClassification(candidate, possibleParent)
-      && isChildPath(candidate.path, possibleParent.path)
-  )));
+  return candidateSpace.removeCoveredItems(candidates, (parent, child) => (
+    parent.type === child.type
+      && candidateSpace.riskLevel(parent) === candidateSpace.riskLevel(child)
+      && parent.reasonCode === child.reasonCode
+  ));
 }
 
-function fileCandidate(filePath, stat) {
-  const ext = path.extname(filePath).toLowerCase();
-  const base = path.basename(filePath);
-  const modified = stat.mtime;
-  const sensitive = isSensitive(filePath);
-
-  if (stat.size >= config.largeFileSize) {
-    addCandidate({
-      name: base,
-      path: filePath,
-      size: stat.size,
-      modifiedAt: modified.toISOString(),
-      type: "Arquivos grandes",
-      security: sensitive ? "Sensivel" : "Verificar antes",
-      reason: "Arquivo acima do limite configurado para arquivos grandes."
-    });
-  }
-
-  if (config.detectOldInstallers !== false && installerExtensions.has(ext) && stat.size >= MIN_INSTALLER_CANDIDATE_SIZE && isOld(modified)) {
-    addCandidate({
-      name: base,
-      path: filePath,
-      size: stat.size,
-      modifiedAt: modified.toISOString(),
-      type: "Instaladores antigos",
-      security: sensitive ? "Sensivel" : "Seguro revisar",
-      reason: "Instalador antigo detectado. Pode estar esquecido apos a instalacao do aplicativo."
-    });
-  }
-
-  if (config.detectOldArchives !== false && archiveExtensions.has(ext) && stat.size >= MIN_ARCHIVE_CANDIDATE_SIZE && isOld(modified)) {
-    addCandidate({
-      name: base,
-      path: filePath,
-      size: stat.size,
-      modifiedAt: modified.toISOString(),
-      type: "Compactados antigos",
-      security: sensitive ? "Sensivel" : "Verificar antes",
-      reason: "Arquivo compactado antigo. Revise o conteudo antes de mover para quarentena."
-    });
-  }
-
-  if (config.detectLogsAndTemps !== false && ((ext === ".log" && stat.size >= 100 * MB && isOld(modified)) || (tempExtensions.has(ext) && stat.size >= MIN_TEMP_CANDIDATE_SIZE))) {
-    addCandidate({
-      name: base,
-      path: filePath,
-      size: stat.size,
-      modifiedAt: modified.toISOString(),
-      type: ext === ".log" ? "Logs grandes" : "Temporarios",
-      security: securityForPath(filePath, ext === ".log" ? "logs" : "temporary"),
-      reason: ext === ".log" ? "Log antigo e grande detectado." : "Arquivo temporario detectado."
-    });
-  }
-
-  if (config.detectOldDownloads !== false && isDownloadsPath(filePath) && stat.size >= MIN_DOWNLOAD_CANDIDATE_SIZE && isOld(modified)) {
-    addCandidate({
-      name: base,
-      path: filePath,
-      size: stat.size,
-      modifiedAt: modified.toISOString(),
-      type: "Downloads antigos",
-      security: sensitive ? "Sensivel" : "Seguro revisar",
-      reason: "Arquivo antigo dentro de Downloads."
-    });
-  }
+function fileCandidate(filePath, stat, restriction) {
+  if (stat.size < Math.min(10 * MB, config.largeFileSize)) return;
+  const details = classifyFile(filePath, stat, config);
+  if (!details) return;
+  addCandidate({
+    ...details,
+    name: path.basename(filePath),
+    path: filePath,
+    size: stat.size,
+    modifiedAt: stat.mtime.toISOString(),
+    kind: "file",
+    identity: statIdentity(stat),
+    isLargeFile: stat.size >= config.largeFileSize,
+    ...(restriction && { riskLevel: "protected", restrictionCode: restriction })
+  });
 }
 
-async function scanDir(dirPath) {
+async function scanDir(dirPath, directoryStat, parentNames, inheritedRestriction = "") {
   await waitIfPaused();
   if (isIgnored(dirPath)) return null;
 
@@ -392,7 +261,9 @@ async function scanDir(dirPath) {
     type: "Pasta",
     modifiedAt: null,
     children: [],
-    risk: isSensitive(dirPath) ? "Sensivel" : "Verificar antes"
+    risk: isSensitive(dirPath) ? "Sensivel" : "Verificar antes",
+    identity: statIdentity(directoryStat),
+    restriction: inheritedRestriction
   };
 
   let entries;
@@ -400,8 +271,14 @@ async function scanDir(dirPath) {
     entries = await fs.readdir(dirPath, { withFileTypes: true });
   } catch (error) {
     recordSkippedPath(dirPath, error);
+    record.restriction ||= "unverified";
     return record;
   }
+  const names = entryNames(entries);
+  let cacheChildren;
+  const pathRestriction = inheritedRestriction || (config.installedRoots.has(candidateSpace.pathKey(dirPath)) ? "application" : directoryProtection(dirPath, names));
+  record.restriction = pathRestriction || directoryContentRestriction(dirPath, names);
+  const dependencyRoot = record.name.toLowerCase() === "node_modules";
 
   for (const entry of entries) {
     await waitIfPaused();
@@ -413,13 +290,22 @@ async function scanDir(dirPath) {
       stat = await fs.lstat(fullPath);
     } catch (error) {
       recordSkippedPath(fullPath, error);
+      record.restriction ||= "unverified";
       continue;
     }
-    if (stat.isSymbolicLink()) continue;
+    if (stat.isSymbolicLink()) {
+      record.restriction ||= "linkedContent";
+      continue;
+    }
 
     if (stat.isDirectory()) {
-      const child = await scanDir(fullPath);
-      if (!child) continue;
+      const child = await scanDir(fullPath, stat, names, pathRestriction);
+      if (!child) {
+        record.restriction ||= "unverified";
+        continue;
+      }
+      if (child.restriction) record.restriction ||= "protectedDescendant";
+      if (child.cacheLayout !== undefined) (cacheChildren ||= Object.create(null))[entry.name.toLowerCase()] = child.cacheLayout;
       record.size += child.size;
       record.files += child.files;
       if (!record.modifiedAt || (child.modifiedAt && child.modifiedAt > record.modifiedAt)) record.modifiedAt = child.modifiedAt;
@@ -427,32 +313,54 @@ async function scanDir(dirPath) {
       continue;
     }
 
-    if (!stat.isFile()) continue;
+    if (!stat.isFile()) {
+      record.restriction ||= "unverified";
+      continue;
+    }
+    if (isIgnored(fullPath)) {
+      record.restriction ||= "unverified";
+      continue;
+    }
     state.files += 1;
     state.mappedBytes += stat.size;
     record.size += stat.size;
     record.files += 1;
     if (!record.modifiedAt || stat.mtime > record.modifiedAt) record.modifiedAt = stat.mtime;
-    trackDuplicateCandidate(fullPath, stat);
-    fileCandidate(fullPath, stat);
+    const canBeProtectedFile = /\.(?:exe|msi|sys)$|^(?:bootmgr|bootnxt|ntuser\.dat|usrclass\.dat)/i.test(entry.name);
+    const fileRestriction = stat.nlink !== 1 ? "linkedContent"
+      : pathRestriction || (dependencyRoot ? "installedDependency" : canBeProtectedFile ? protectedContext(fullPath) : "");
+    if (fileRestriction) record.restriction ||= fileRestriction === "linkedContent" ? fileRestriction : "protectedDescendant";
+    if (!fileRestriction) trackDuplicateCandidate(fullPath, stat);
+    fileCandidate(fullPath, stat, fileRestriction);
     maybeProgress();
   }
 
   const modifiedAt = record.modifiedAt ? record.modifiedAt.toISOString() : null;
+  record.cacheLayout = cacheChildLayout(record.name.toLowerCase(), entries, cacheChildren);
+  const details = classifyFolder(record.path, config, {
+    names,
+    parentNames,
+    entries,
+    children: cacheChildren || {},
+    modifiedAt: record.modifiedAt,
+    protectedReason: pathRestriction
+  });
   if (record.size >= config.largeFolderSize) {
-    state.largeFolders.push(buildLargeFolderItem(record, state.largeFolders.length, modifiedAt));
+    state.largeFolders.push(buildLargeFolderItem(record, state.largeFolders.length, modifiedAt, details));
   }
-
-  const kind = folderType(record.name, record.path);
-  if (kind && (record.size >= 50 * MB || safeReviewFolders.has(record.name.toLowerCase()))) {
+  const recognizedCache = details?.type === "Caches" && !["unknownCache", "npmRoot"].includes(details.reasonCode);
+  const minSize = recognizedCache || details?.type === "Componentes" ? 10 * MB : 50 * MB;
+  if (details && (record.size >= minSize || details.type === "Projetos dev")) {
     addCandidate({
+      ...details,
       name: record.name,
       path: record.path,
       size: record.size,
+      files: record.files,
       modifiedAt,
-      type: kind.type,
-      security: securityForPath(record.path, "safe"),
-      reason: kind.reason,
+      kind: "directory",
+      identity: record.identity,
+      ...(record.restriction && { riskLevel: "protected", restrictionCode: record.restriction }),
       children: record.children
     });
   }
@@ -460,7 +368,7 @@ async function scanDir(dirPath) {
   return record;
 }
 
-function buildLargeFolderItem(record, index = 0, modifiedAt = null) {
+function buildLargeFolderItem(record, index = 0, modifiedAt = null, details = null) {
   const sensitive = isSensitive(record?.path);
   return {
     id: `folder-${index}-${Buffer.from(record.path).toString("base64").slice(0, 14)}`,
@@ -471,6 +379,10 @@ function buildLargeFolderItem(record, index = 0, modifiedAt = null) {
     modifiedAt: modifiedAt || (record.modifiedAt instanceof Date ? record.modifiedAt.toISOString() : record.modifiedAt || null),
     risk: sensitive ? "Sensivel" : record.risk,
     security: sensitive ? "Sensivel" : "Verificar antes",
+    kind: "directory",
+    identity: record.identity,
+    ...(details && { riskLevel: details.riskLevel }),
+    ...(record.restriction && { riskLevel: "protected", restrictionCode: record.restriction }),
     reason: sensitive
       ? "Componente protegido mostrado apenas para transparência de uso do disco."
       : "Pasta acima do limite configurado para pastas grandes.",
@@ -478,12 +390,37 @@ function buildLargeFolderItem(record, index = 0, modifiedAt = null) {
   };
 }
 
+async function inspectScanRoot(rootPath) {
+  const stat = await fs.lstat(rootPath);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("A raiz do scan precisa ser uma pasta real.");
+  }
+  if (candidateSpace.pathKey(await fs.realpath(rootPath)) !== candidateSpace.pathKey(rootPath)) {
+    throw new Error("A raiz do scan aponta para outro local.");
+  }
+  let parent = path.dirname(rootPath);
+  if (parent === rootPath) return scanDir(rootPath, stat);
+
+  let parentNames;
+  let restriction = "";
+  for (let current = parent; current !== path.dirname(current); current = path.dirname(current)) {
+    const parentStat = await fs.lstat(current);
+    if (parentStat.isSymbolicLink()) throw new Error("A raiz do scan passa por um link ou junction.");
+    const names = entryNames(await fs.readdir(current, { withFileTypes: true }));
+    if (current === parent) parentNames = names;
+    restriction ||= config.installedRoots.has(candidateSpace.pathKey(current)) ? "application" : directoryProtection(current, names);
+  }
+  return scanDir(rootPath, stat, parentNames, restriction);
+}
+
 async function start(payload) {
   config = {
     ...payload.settings,
     ignoredPaths: payload.settings.ignoredPaths || [],
-    includedPaths: payload.settings.includedPaths || []
+    includedPaths: payload.settings.includedPaths || [],
+    installedRoots: new Set((payload.settings.installedRoots || []).map(candidateSpace.pathKey))
   };
+  state.candidateRunId = crypto.randomBytes(8).toString("hex");
   state.startedAt = nowIso();
   post("progress", { progress: 2, currentPath: payload.root, files: 0, directories: 0, skipped: 0, mappedBytes: 0, candidates: 0 });
 
@@ -493,13 +430,19 @@ async function start(payload) {
     for (const rootPath of roots) {
       state.currentPath = rootPath;
       maybeProgress(true);
-      const summary = await scanDir(rootPath);
-      if (summary) rootSummaries.push(summary);
+      try {
+        const summary = await inspectScanRoot(rootPath);
+        if (summary) rootSummaries.push(summary);
+      } catch (error) {
+        if (cancelled) throw error;
+        recordSkippedPath(rootPath, error);
+      }
     }
     state.largeFolders.sort((a, b) => b.size - a.size);
     state.candidates = removeRedundantChildCandidates(state.candidates);
-    state.candidates.sort((a, b) => b.size - a.size);
+    state.candidates.sort((a, b) => Number(a.riskLevel === "protected") - Number(b.riskLevel === "protected") || b.size - a.size);
     const result = {
+      cleanupVersion: candidateSpace.CLEANUP_CONTEXT_VERSION,
       id: `${Date.now()}`,
       drive: payload.drive,
       root: payload.root,
@@ -538,9 +481,8 @@ process.on("message", (message) => {
 
 module.exports = {
   buildLargeFolderItem,
-  folderType,
-  isInstalledSoftwarePath,
   removeRedundantChildCandidates,
   recordSkippedPath,
+  isInsideRoot,
   skippedReason
 };

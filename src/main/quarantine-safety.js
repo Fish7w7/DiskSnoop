@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { riskLevel } = require("../renderer/candidate-space");
 
 const PROTECTED_APP_DATA_PATH_SEGMENTS = Object.freeze([
   "\\appdata\\local\\packages",
@@ -43,7 +44,11 @@ function isProtectedAppDataPath(itemPath) {
 }
 
 function isSensitiveWindowsPath(itemPath) {
-  return matchesProtectedSegment(itemPath, SENSITIVE_WINDOWS_PATH_SEGMENTS);
+  const normalized = String(itemPath || "").replaceAll("/", "\\").toLowerCase();
+  return matchesProtectedSegment(normalized, SENSITIVE_WINDOWS_PATH_SEGMENTS)
+    || /^[a-z]:\\(?:boot|efi|recovery)(?:\\|$)/.test(normalized)
+    || /^[a-z]:\\(?:bootmgr|bootnxt|(pagefile|hiberfil|swapfile)\.sys)$/.test(normalized)
+    || /\\(?:ntuser\.dat|usrclass\.dat)(?:\.log\d*|$)/.test(normalized);
 }
 
 function pathProtection(itemPath) {
@@ -69,11 +74,11 @@ function pathProtection(itemPath) {
 function canMoveToQuarantineByPolicy(item) {
   return Boolean(item?.path)
     && !isSensitiveWindowsPath(item.path)
-    && !["Sensivel", "Sensível"].includes(item.security)
-    && !["Sensivel", "Sensível"].includes(item.risk);
+    && !["high", "protected"].includes(riskLevel(item));
 }
 
 function assertPermanentDeletionAllowed(record) {
+  if (!record?.originalPath) throw new Error("A origem deste item não foi confirmada. Abra a quarentena e revise manualmente.");
   if (record?.originalPath && isSensitiveWindowsPath(record.originalPath)) {
     throw new Error("Este item veio de uma area protegida do Windows ou de um app instalado. O DiskSnoop nao permite a exclusao permanente; restaure ou revise manualmente.");
   }
@@ -107,7 +112,8 @@ function assertNotInternalPath(sourcePath, roots = {}) {
 
 function assertTrustedQuarantineRecord(record, trustedRoots = []) {
   if (!record?.quarantinePath) throw new Error("Registro de quarentena sem caminho interno.");
-  const trusted = trustedRoots.filter(Boolean).some((root) => sameOrInsidePath(record.quarantinePath, root));
+  const parent = path.dirname(record.quarantinePath);
+  const trusted = trustedRoots.filter(Boolean).some((root) => sameOrInsidePath(parent, root) && sameOrInsidePath(root, parent));
   if (!trusted) {
     throw new Error("O registro da quarentena aponta para fora de uma raiz reconhecida. Abra a pasta e revise manualmente.");
   }

@@ -49,16 +49,26 @@
       .map((candidate) => [candidateAnalysisId(candidate), candidate])
       .filter(([id]) => id));
     const classifications = new Map();
-    const seenIds = new Set();
+    const conflictingIds = new Set();
     const counts = { APAGAR: 0, MANTER: 0, REVISAR: 0 };
     let notFound = parsed.invalid;
 
     for (const entry of parsed.entries) {
-      if (seenIds.has(entry.id) || !candidatesById.has(entry.id)) {
+      if (conflictingIds.has(entry.id) || !candidatesById.has(entry.id)) {
         notFound += 1;
         continue;
       }
-      seenIds.add(entry.id);
+      const existing = classifications.get(entry.id);
+      if (existing) {
+        notFound += 1;
+        if (existing !== entry.state) {
+          classifications.delete(entry.id);
+          conflictingIds.add(entry.id);
+          counts[existing] -= 1;
+          notFound += 1;
+        }
+        continue;
+      }
       classifications.set(entry.id, entry.state);
       counts[entry.state] += 1;
     }

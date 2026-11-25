@@ -103,7 +103,7 @@ const i18n = global.window.diskSnoopI18n;
     ["Conteúdo principal", "Main contents"],
     ["Itens sensíveis como Windows, System32, drivers e programas ativos continuam fora dos candidatos normais.", "Sensitive items such as Windows, System32, drivers, and active programs remain outside normal candidates."],
     ["Arquivo grande a partir de:", "Large file from:"],
-    ["Local atual: C:\\Users\\oloco\\AppData\\Roaming\\DiskSnoop\\Quarantine", "Current location: C:\\Users\\oloco\\AppData\\Roaming\\DiskSnoop\\Quarantine"],
+    ["Local atual: C:\\Users\\FixtureUser\\AppData\\Roaming\\DiskSnoop\\Quarantine", "Current location: C:\\Users\\FixtureUser\\AppData\\Roaming\\DiskSnoop\\Quarantine"],
     ["2 scans no histórico", "2 scans in history"],
     ["1 scan carregado nesta sessão", "1 scan loaded in this session"],
     ["sim relatório salvo para abertura rápida", "sim saved report for quick opening"],
@@ -331,8 +331,8 @@ const i18n = global.window.diskSnoopI18n;
   assert.equal(i18n.translate("en-US", "candidates.verifySignature"), "Verify signature");
   assert.equal(i18n.translate("en-US", "signature.valid", { signer: "Example Corp" }), "Signed by: Example Corp");
   assert.equal(i18n.translate("pt-BR", "signature.validMicrosoft"), "Assinado pela Microsoft");
-  assert.equal(i18n.translate("pt-BR", "history.timelineAria"), "Gráfico histórico de espaço revisável e liberado por scan");
-  assert.equal(i18n.translate("en-US", "history.timelineAria"), "Historical chart of reviewable and freed space by scan");
+  assert.equal(i18n.translate("pt-BR", "history.timelineAria"), "Gráfico histórico de tamanho revisável e tamanho lógico excluído por scan");
+  assert.equal(i18n.translate("en-US", "history.timelineAria"), "Historical chart of reviewable size and logical size deleted by scan");
   assert.equal(i18n.translate("pt-BR", "history.chartTitle"), "Impacto dos scans");
   assert.equal(i18n.translate("en-US", "history.freed"), "Freed");
   assert.equal(i18n.translate("pt-BR", "sidebar.version", { version: "1.3.0" }), "Versão v1.3.0");
@@ -344,4 +344,23 @@ const i18n = global.window.diskSnoopI18n;
   assert.equal(i18n.translatePlaceholder("en-US", "Buscar item ou caminho..."), "Search item or path...");
 }
 
+for (const [locale, expected] of [
+  ["pt-BR", ["Baixo risco", "Revisão recomendada", "Alto risco", "Protegido"]],
+  ["en-US", ["Low risk", "Review recommended", "High risk", "Protected"]]
+]) {
+  const messages = i18n.messages[locale];
+  assert.deepEqual(["low", "review", "high", "protected"].map((level) => messages[`cleanup.risk.${level}`]), expected);
+  for (const evidence of ["nodeProject", "projectOutput", "offlineCache", "shaderCache", "unknownCache", "downloadInstaller"]) {
+    assert.ok(messages[`cleanup.reason.${evidence}`]);
+    assert.ok(messages[`cleanup.impact.${evidence}`]);
+  }
+  assert.ok(messages["cleanup.restriction.protectedDescendant"]);
+  assert.ok(messages["cleanup.rescanToMove"]);
+}
+assert.match(i18n.translate("en-US", "cleanup.impact.offlineCache"), /offline/i);
+assert.match(i18n.translate("pt-BR", "cleanup.impact.shaderCache"), /recompilados/i);
+assert.match(i18n.translate("pt-BR", "cleanup.evidence.profile"), /diretório pai/);
+assert.match(i18n.translate("en-US", "cleanup.modifiedTimeNote"), /last used/);
+assert.match(i18n.translate("en-US", "history.deletedLogical"), /logical size/);
+assert.match(i18n.translate("pt-BR", "cleanup.spaceNote"), /mesmo volume/);
 console.log("i18n rendered text checks passed");

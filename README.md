@@ -33,24 +33,20 @@ Abra a [release mais recente](https://github.com/Fish7w7/DiskSnoop/releases/late
 
 1. **Abra o aplicativo.** Baixe e execute o Setup ou o Portable conforme as instruções de [download](#download).
 2. **Escolha o idioma.** Use o seletor com ícone de globo no canto superior direito da tela de boas-vindas para escolher **Português (BR)** ou **English** antes do primeiro scan.
-3. **Escolha o que analisar.** Na tela de boas-vindas, clique em **Começar análise** (**Start analysis** em inglês). Na **Visão Geral**, use **Novo scan** ou `Ctrl+N` para voltar à seleção de discos. Para limitar a próxima análise a pastas específicas, antes de abrir a seleção de discos vá a **Configurações → Escopo do scan** e use **Adicionar pasta** em **Pastas incluídas**. Escolha o disco que contém essas pastas. Se nenhuma inclusão pertencer ao disco escolhido, o scan começa na raiz desse disco.
+3. **Escolha o que analisar.** Na tela de boas-vindas, clique em **Começar análise** (**Start analysis** em inglês). Na **Visão Geral**, use **Novo scan** ou `Ctrl+N` para voltar à seleção de discos. Para limitar a próxima análise a pastas específicas, antes de abrir a seleção de discos vá a **Configurações → Escopo do scan** e use **Adicionar pasta** em **Pastas incluídas**. Se houver inclusões, o scan exige que pelo menos uma delas pertença ao disco escolhido.
 4. **Inicie a análise.** Em **Escolha um disco**, clique em **Analisar C:** ou no botão equivalente do disco desejado. Acompanhe os contadores e a estimativa de tempo restante. Use **Pausar**, **Retomar** ou **Cancelar** conforme necessário.
 5. **Leia o resultado.** Na **Visão Geral**, veja a duração, a contagem de arquivos e o espaço estimado para revisão. Em **Itens sem acesso**, confira os caminhos que ficaram de fora e o motivo informado pelo Windows. Se precisar, use **Tentar novamente como administrador** para uma rechecagem somente leitura, sujeita à confirmação do UAC.
 6. **Investigue os maiores itens.** Em **Pastas Grandes**, expanda os ramos pelas setas e selecione uma linha para ver os detalhes. Use **Ver conteúdo** para navegar pelas subpastas. Em **Arquivos Grandes**, selecione um arquivo para conferir o tamanho e o caminho.
 7. **Revise candidatos e duplicados.** Em **Candidatos** e **Sobras de Apps**, leia o caminho e o motivo da detecção. Em **Duplicados**, compare as cópias e escolha qual caminho deve ser mantido. **Hash confirmado** indica conteúdo idêntico entre as cópias verificadas. **Possível duplicado** indica correspondência por nome e tamanho.
 8. **Mova apenas itens revisados para a quarentena.** Use **Mover para quarentena** quando a ação estiver disponível no painel de detalhes. Em **Candidatos**, você também pode marcar vários itens elegíveis e usar **Mover selecionados**. Use uma quarentena no mesmo disco para mover pastas.
 9. **Restaure se precisar.** Abra **Quarentena → Ativos**, selecione o item e clique em **Restaurar**. O DiskSnoop usa o caminho original registrado e bloqueia a restauração se já houver um item nesse local.
-10. **Confirme antes de excluir definitivamente.** Em **Quarentena → Ativos**, confira o caminho original do item, clique em **Excluir permanentemente**, digite a palavra solicitada na janela e clique em **Excluir**. Depois da exclusão, o DiskSnoop não consegue recuperar o item.
+10. **Confirme antes de excluir definitivamente.** Em **Quarentena → Ativos**, confira o caminho original, clique em **Excluir permanentemente**, digite a palavra solicitada e confirme também no diálogo nativo do Windows. Depois da exclusão, o DiskSnoop não consegue recuperar o item.
 
-## Novidades da versão 1.13.0
+## Novidades da versão 1.14.0
 
-* **Pastas Grandes** reúne os resultados por caminho em uma árvore expansível. Em **Ver conteúdo**, você pode navegar pelas subpastas, usar a barra de caminho, atualizar a pasta atual e calcular tamanhos ainda desconhecidos. Veja as [notas da versão v1.13.0](https://github.com/Fish7w7/DiskSnoop/releases/tag/v1.13.0).
-* O progresso do scan agora calcula uma estimativa aproximada de tempo restante usando a velocidade dos últimos 10 segundos.
-* Os painéis de detalhes ganharam um botão discreto para copiar somente o caminho do item.
-* Novos atalhos permitem iniciar outro scan (`Ctrl+N`), buscar (`/`), fechar detalhes (`Esc`), navegar com as setas e copiar o caminho selecionado (`C`).
-* A Visão Geral mostra um indicador discreto da saúde informada pelo disco físico, com comportamento seguro quando os dados SMART não estão disponíveis.
-* Caminhos sem acesso agora são listados com o motivo da falha e podem ser verificados novamente, em lote, após confirmação do UAC.
-* A rechecagem como administrador é somente leitura: não exclui nem move arquivos e encerra a espera após 60 segundos.
+* Escolha o idioma na tela de boas-vindas ou nas Configurações. O DiskSnoop usa um idioma compatível do sistema na primeira execução e lembra sua escolha.
+* A detecção contextual explica por que um item apareceu, onde a evidência foi encontrada e o impacto de mover o item.
+* A quarentena revalida os itens antes de mover, verifica o destino ao restaurar e pede confirmação nativa para excluir definitivamente. A simulação e o Histórico distinguem os tamanhos estimados da variação medida de espaço livre.
 
 ---
 
@@ -90,25 +86,38 @@ Quando os cmdlets de Storage do Windows oferecem dados, a Visão Geral também m
 
 ### 🧹 Limpeza inteligente
 
-O DiskSnoop identifica possíveis candidatos de limpeza, como:
+O DiskSnoop cruza caminho, estrutura, formato e evidências de projeto ou instalação. `dist` e `build` em projetos legítimos continuam sujeitos a revisão. Um manifesto dentro de `node_modules` pertence ao contexto de uma dependência instalada, e a presença de um lockfile no projeto não garante recuperar dependências privadas, locais, workspaces ou patches. Componentes de runtimes, extensões, ambientes virtuais, instalações e distribuições gerenciadas pelo npm, npx, Corepack, pnpm, Yarn ou Bun ficam protegidos. Pastas que os contêm também são bloqueadas para movimentação integral.
 
-* `node_modules`;
-* `.venv`;
-* `dist` e `build`;
-* caches;
-* instaladores antigos;
-* downloads antigos;
-* logs e arquivos temporários.
+| Risco | Como interpretar |
+| --- | --- |
+| Baixo risco | Há evidências de que o conteúdo pode ser recriado. Revise antes de mover. |
+| Revisão recomendada | Confirme a finalidade, o impacto e como recuperar o conteúdo. |
+| Alto risco | A finalidade ou a recuperação é incerta. O item fica disponível para revisão manual. |
+| Protegido | Há sinais de dependência ativa, conteúdo protegido ou uma verificação incompleta. A movimentação fica bloqueada. |
+
+Categoria, risco e confiança aparecem separadamente. O painel e o resumo para IA identificam onde cada evidência foi observada. Por exemplo, `History` e `Preferences` no perfil vizinho ajudam a identificar um cache Chromium. Caches convencionais com estrutura verificada podem receber baixo risco e recomendação de fechar o aplicativo. Shaders, dados offline, downloads de runtimes e caches de mídia ainda exigem cautela. Perfis inteiros com dados persistentes ficam protegidos.
+
+A verificação reconhece `Cache_Data` com o diário e o snapshot esperados em `No_Vary_Search`, além de estruturas de `Code Cache` em perfis Chromium, Electron, CEF e WebView2. Conteúdo adicional sem finalidade confirmada mantém a revisão. `Shared Dictionary/cache` fica protegido por pertencer ao mesmo armazenamento que o banco de metadados no diretório pai. Use os controles do navegador para limpar esses dados.
+
+A simulação distingue o tamanho lógico dos candidatos, o potencialmente recuperável e a seleção para quarentena. Caminhos equivalentes e pastas sobrepostas contam uma só vez. Mover no mesmo volume mantém os dados no disco. O Histórico separa o tamanho lógico excluído da variação de espaço livre medida, que pode refletir outras atividades no disco. Links simbólicos e junctions não são seguidos, e arquivos com múltiplos hard links ficam fora dos totais elegíveis. Compressão e alocação física podem afetar o espaço efetivamente recuperado.
 
 Arquivos duplicados são agrupados por nome e tamanho. Quando a verificação por hash está ativa, o DiskSnoop usa SHA-256 para confirmar o conteúdo dos arquivos que consegue ler.
 
 A busca por sobras de aplicativos analisa pastas comuns do Windows com uma abordagem conservadora.
 
+O resumo para avaliação por IA pode incluir evidências, risco, confiança e impacto. A importação continua aceitando `ID | APAGAR`, `ID | MANTER` e `ID | REVISAR` para IDs conhecidos do relatório. Cada novo scan emite IDs próprios, e respostas conflitantes para o mesmo ID são ignoradas. As recomendações ajudam a filtrar e selecionar itens elegíveis. A movimentação exige uma ação do usuário e a importação funciona sem conexão com um serviço de IA.
+
+Essas heurísticas não confirmam se um arquivo está em uso, se uma versão de runtime é obsoleta ou se um build pode ser recriado. Em Downloads, um possível instalador precisa de indícios no nome ou formato. A data de modificação original é preservada. Datas anteriores a 1990 ou significativamente futuras são tratadas como sinais de idade não confiáveis, e o campo de modificação não representa o último uso. Relatórios gerados antes do refinamento das proteções continuam consultáveis. Para mover seus itens ou itens alterados desde a análise, faça um novo scan.
+
 ### 🗂️ Quarentena
 
 Os itens selecionados podem ser movidos para uma quarentena antes da exclusão definitiva.
 
-Enquanto estiverem na quarentena, eles podem ser restaurados para o local original. A exclusão permanente sempre exige confirmação do usuário.
+Enquanto estiverem na quarentena, os itens com origem confirmada podem ser restaurados para o local original. A exclusão permanente exige confirmação digitada no app e confirmação em um diálogo nativo do Windows. Itens recuperados sem origem confirmada ficam disponíveis para revisão manual.
+
+Antes de mover, o DiskSnoop confere o relatório atual, a identidade do item no disco e as proteções encontradas no caminho e nos descendentes. Se uma pasta contiver um componente protegido, link ou trecho que não possa ser validado, ela não é movida integralmente. A restauração verifica o destino e mantém itens que já estejam no caminho original.
+
+O registro com a origem é gravado antes da movimentação. Se a operação for interrompida e a conclusão estiver incerta, o item aparece como **Movimentação pendente** para revisão. Uma cópia ainda pode exigir espaço temporário quando a restauração não puder usar um hard link ou quando o arquivo for movido entre volumes. Alterações externas concorrentes podem interromper uma operação, inclusive uma exclusão de pasta já iniciada.
 
 Para pastas grandes, é recomendado manter a quarentena no mesmo disco para evitar cópias demoradas.
 
@@ -177,6 +186,7 @@ Em **Atualização**, clique em **Verificar agora** para buscar novas versões n
 * Alguns discos USB, virtuais ou controladores específicos não fornecem dados de saúde pelos cmdlets de Storage.
 * Algumas pastas em `ProgramData`, `Program Files` ou `Windows` podem exigir permissão de administrador.
 * A detecção de sobras de aplicativos é conservadora e pode mostrar pastas que ainda pertencem a programas instalados.
+* Alterações concorrentes no disco podem interromper operações. Se uma exclusão recursiva falhar no meio, o aplicativo exibe o erro e registra a falha no log de auditoria. Os totais de exclusão do Histórico só contabilizam operações concluídas.
 * A versão portable não consegue substituir automaticamente o executável enquanto ele estiver aberto.
 * Algumas mensagens de erro do Windows podem aparecer no idioma original do sistema.
 
@@ -211,7 +221,7 @@ Também há regressões para proteção AppX, cache do inventário, Authenticode
 
 ```powershell
 npm ci
-npm run dist
+npm run dist -- --publish never
 ```
 
 O instalador NSIS e o portable serão gerados em `release/`.
@@ -219,7 +229,7 @@ O instalador NSIS e o portable serão gerados em `release/`.
 Para gerar apenas o portable:
 
 ```powershell
-npm run dist:portable
+npm run dist:portable -- --publish never
 ```
 
 O instalador é colocado em `%LOCALAPPDATA%\Programs\DiskSnoop` para o usuário atual, sem exigir permissão de administrador.
@@ -238,7 +248,7 @@ O instalador é colocado em `%LOCALAPPDATA%\Programs\DiskSnoop` para o usuário 
 3. Gere os artefatos:
 
    ```powershell
-   npm run dist
+   npm run dist -- --publish never
    ```
 
 4. Crie e envie a tag:

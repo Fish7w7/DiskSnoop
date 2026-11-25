@@ -60,6 +60,7 @@ test("idioma salvo é definitivo e não consulta novamente o sistema", () => {
 const mainFile = path.resolve(__dirname, "../src/main/main.js");
 const rendererFile = path.resolve(__dirname, "../src/renderer/renderer.js");
 const i18nFile = path.resolve(__dirname, "../src/renderer/i18n.js");
+const candidateSpaceFile = path.resolve(__dirname, "../src/renderer/candidate-space.js");
 const html = fs.readFileSync(path.resolve(__dirname, "../src/renderer/index.html"), "utf8");
 
 async function startMain(directory, systemLanguage) {
@@ -160,6 +161,7 @@ function startRenderer(main, staleLanguage = "pt-BR") {
     vm.runInContext(inlineScript, context);
   }
   const bootText = status.textContent;
+  runScript(candidateSpaceFile, context);
   runScript(rendererFile, context);
   return {
     app,
